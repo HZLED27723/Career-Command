@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+/*
+ * CareerCommand design tokens — brand guidelines v1.0 §04.
+ *
+ * Palette: Mint (primary — actions, progress), Sage (secondary — dividers,
+ * states), Pine (the tile, and only the tile), Carbon (background/surfaces),
+ * Mist (body text). Target balance is 70 Carbon · 18 Mist · 8 Pine · 4 Mint —
+ * Mint is an accent; if a screen looks mint, it's wrong.
+ *
+ * Components use the generated utilities (bg-surface, text-ink, border-edge,
+ * text-accent, text-sage, text-ok…).
+ */
+@theme {
+  /* Brand colours, verbatim */
+  --color-mint: #7fd9b9;
+  --color-sage: #4c8c78;
+  --color-pine: #26473e;
+  --color-pine-deep: #17322b;
+  --color-carbon: #0b0e0d;
+  --color-mist: #edf1ef;
+
+  /* Surfaces — Carbon and tints of it */
+  --color-bg: #0b0e0d;
+  --color-surface: #101413;
+  --color-panel: #141a18;
+  --color-raised: #1a211e;
+  --color-edge: #222a27;
+  --color-edge-strong: #2f3a36;
+
+  /* Ink — Mist and its secondary.
+     Measured against --color-bg (#0b0e0d) and --color-panel (#141a18):
+       ink        17.0 : 1 / 15.5 : 1
+       ink-muted   6.6 : 1 /  6.0 : 1
+       ink-faint   5.1 : 1 /  4.6 : 1
+     ink-faint was #5e6b67 (3.5 : 1 / 3.2 : 1) — below WCAG AA, and it is the
+     token every small mono label uses. Lightened within the same sage-grey
+     family so the palette reads the same but the text is actually legible.
+     Keep any replacement above 4.5 : 1 on BOTH surfaces. */
+  --color-ink: #edf1ef;
+  --color-ink-muted: #8d9a95;
+  --color-ink-faint: #788680;
+
+  /* Accent — Mint for actions/progress, with a lift for emphasis and a
+     deep tint for quiet accent surfaces */
+  --color-accent: #7fd9b9;
+  --color-accent-strong: #a6e7ce;
+  --color-accent-dim: #1e2d28;
+
+  /* Status — outside the brand palette by necessity (the guide defines no
+     status hues); desaturated to sit on Carbon without fighting Mint. */
+  --color-ok: #6fc48f;
+  --color-warn: #d1a163;
+  --color-danger: #c87878;
+  --color-info: #7a9fce;
+
+  --color-paper: #f4f2ec;
+  --color-paper-ink: #24262a;
+
+  /* Vault cover backings — one per document track, muted to sit on Carbon.
+     The track is always written out too; colour is never the only signal. */
+  --color-cover-eng: #24473c;
+  --color-cover-eng-ink: #8fd0b4;
+  --color-cover-retail: #4d4231;
+  --color-cover-retail-ink: #d8c29a;
+  --color-cover-letter: #2c3b4d;
+  --color-cover-letter-ink: #9fb6d1;
+  --color-cover-neutral: #1d2421;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  /* Brand typeface — wordmark only (brand guidelines §05) */
+  --font-brand: var(--font-archivo);
+
+  --animate-fade-in: fade-in 0.25s ease both;
+  --animate-fade-up: fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pulse-soft: pulse-soft 2.2s ease-in-out infinite;
+  --animate-page-enter: page-enter 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* opacity-only: box-shadow keyframes repaint every frame and tank FPS */
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+html {
+  /* Native controls (select, date picker) render dark */
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Keyboard focus is always visible. In the base layer so a component's own
+   focus treatment (a mint border on inputs, say) still takes precedence. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+::selection {
+  background: var(--color-accent-dim);
+  color: var(--color-accent-strong);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-edge-strong);
+  border-radius: 5px;
+  border: 2px solid var(--color-bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * PDF export: window.print() prints only #print-area (the rendered
+ * document), pinned to a real A4 page. MVP assumption: single-page docs.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  body {
+    background: white;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #print-area,
+  #print-area * {
+    visibility: visible;
+  }
+  /* absolute (not fixed) so multi-page documents like the CV paginate */
+  #print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 210mm;
+    min-height: 297mm;
+    max-width: none;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+  body,
+  main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+}
