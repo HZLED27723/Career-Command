@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { courseRepo, certificationRepo, skillRepo } from "@/lib/db";
 import type { Course, CourseStatus, RoleTrack, Skill } from "@/lib/types";
 import { useTracks } from "@/lib/tracks";
+import { parseLocalDate } from "@/lib/actions";
+import { issuerKey, monogram, monogramColour, shrinkLogo } from "@/lib/credentials";
+import { formatDate } from "@/components/workspace/ShelfCard";
 
 /** The learning queue, in display order: what you're on → what's next → done. */
 const SECTIONS: {
@@ -148,14 +151,30 @@ export default function CoursesPage() {
     );
     for (const c of courses ?? []) byStatus.get(c.status)?.push(c);
     // Soonest target date first; undated entries sink to the bottom.
-    for (const list of byStatus.values())
-      list.sort(
-        (a, b) =>
-          (a.targetDate ?? "9999").localeCompare(b.targetDate ?? "9999") ||
-          a.title.localeCompare(b.title),
+    for (const [status, list] of byStatus)
+      list.sort((a, b) =>
+        status === "completed"
+          ? // Finished courses: most recently finished first.
+            (b.completedDate ?? "").localeCompare(a.completedDate ?? "") ||
+            a.title.localeCompare(b.title)
+          : (a.targetDate ?? "9999").localeCompare(b.targetDate ?? "9999") ||
+            a.title.localeCompare(b.title),
       );
     return byStatus;
   }, [courses]);
+
+  /**
+   * One logo per issuer, shared with Certifications: a logo added on either
+   * page shows on every course and credential from the same provider.
+   */
+  const sharedLogos = useMemo(() => {
+    const map = new Map<string, Blob>();
+    for (const c of certs ?? [])
+      if (c.issuerLogo && c.issuer) map.set(issuerKey(c.issuer), c.issuerLogo);
+    for (const c of courses ?? [])
+      if (c.logo && c.provider) map.set(issuerKey(c.provider), c.logo);
+    return map;
+  }, [certs, courses]);
 
   const addCourse = async () => {
     const title = draft.trim();
@@ -303,6 +322,7 @@ export default function CoursesPage() {
                       <CourseRow
                         key={c.id}
                         course={c}
+                        sharedLogo={c.provider ? sharedLogos.get(issuerKey(c.provider)) : undefined}
                         open={openIds.has(c.id!)}
                         onToggle={() => toggle(c.id!)}
                         skills={skills ?? []}
@@ -349,39 +369,45 @@ function useObjectUrl(blob: Blob | undefined) {
 }
 
 /**
- * Provider icon tile: uploaded logo → favicon from the course link →
- * monogram. Click to upload / replace the logo.
+ * Provider icon tile: uploaded logo → the issuer's logo saved on another
+ * course or credential → favicon from the course link → monogram. Click to
+ * upload / replace the logo; uploads are shrunk (every Blob rides in the one
+ * synced row).
  */
-function CourseIcon({ course }: { course: Course }) {
-  const logoUrl = useObjectUrl(course.logo);
+function CourseIcon({ course, sharedLogo }: { course: Course; sharedLogo?: Blob }) {
+  const logoUrl = useObjectUrl(course.logo ?? sharedLogo);
   const domain = domainOf(course.url);
   const [faviconFailed, setFaviconFailed] = useState(false);
   useEffect(() => setFaviconFailed(false), [domain]);
-
-  const monogram = (course.provider ?? course.title).trim().charAt(0) || "?";
+  const name = course.provider || course.title;
+  const showMonogram = !logoUrl && !(domain && !faviconFailed);
 
   return (
     <label
       title="Upload the company / association's logo"
-      className="group/icon relative grid size-9 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-md border border-edge bg-panel transition-colors hover:border-accent-dim"
+      className="group/icon relative grid size-9 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-md border border-edge transition-colors hover:border-accent-dim"
+      style={showMonogram ? { backgroundColor: monogramColour(name) } : undefined}
     >
       <input
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={(e) => {
+        onChange={async (e) => {
           const f = e.target.files?.[0];
-          if (f) void courseRepo.update(course.id, { logo: f });
           e.target.value = "";
+          if (!f) return;
+          try {
+            await courseRepo.update(course.id, { logo: await shrinkLogo(f) });
+          } catch {
+            /* unreadable image — leave the current icon */
+          }
         }}
       />
       {logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={logoUrl}
-          alt=""
-          className="h-full w-full object-contain p-1"
-        />
+        <span className="grid size-full place-items-center bg-paper p-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
+        </span>
       ) : domain && !faviconFailed ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -391,14 +417,81 @@ function CourseIcon({ course }: { course: Course }) {
           className="size-5 object-contain"
         />
       ) : (
-        <span className="font-mono text-sm font-bold text-accent-strong">
-          {monogram.toUpperCase()}
+        <span className="font-mono text-[11px] font-semibold text-mist">
+          {monogram(name)}
         </span>
       )}
       <span className="pointer-events-none absolute inset-0 grid place-items-center bg-bg/70 text-[10px] font-semibold text-ink opacity-0 transition-opacity group-hover/icon:opacity-100">
         edit
       </span>
     </label>
+  );
+}
+
+/** "21 Jun 2026" from a stored YYYY-MM-DD, read as a local date. */
+const showDay = (iso?: string) => {
+  const d = parseLocalDate(iso);
+  return d ? formatDate(d.toISOString()) : null;
+};
+
+/**
+ * The row's date: reads like the rest of the app ("21 Jun 2026", or a quiet
+ * "set date") instead of the browser's "dd/mm/yyyy" mask, and still opens the
+ * native picker on click. Fixed width so every row's date lines up.
+ */
+function DateCell({
+  label,
+  value,
+  tone,
+  title,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  tone: "faint" | "danger";
+  title: string;
+  onChange: (v: string | undefined) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const shown = showDay(value);
+  const open = () => {
+    const el = ref.current;
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus();
+    }
+  };
+  return (
+    <span className="relative flex w-36 shrink-0 justify-end max-sm:order-3 max-sm:w-auto max-sm:grow max-sm:justify-start max-sm:pl-[4.25rem]">
+      <button
+        type="button"
+        onClick={open}
+        title={title}
+        className="flex min-h-9 items-center gap-1.5 rounded-sm px-2 transition-colors hover:bg-raised"
+      >
+        <span className={`font-mono text-[10px] uppercase ${tone === "danger" ? "text-danger" : "text-ink-faint"}`}>
+          {label}
+        </span>
+        <span
+          className={`font-mono text-xs ${
+            !shown ? "text-ink-faint/70" : tone === "danger" ? "text-danger" : "text-ink-muted"
+          }`}
+        >
+          {shown ?? "set date"}
+        </span>
+      </button>
+      <input
+        ref={ref}
+        type="date"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || undefined)}
+        tabIndex={-1}
+        aria-hidden
+        className="pointer-events-none absolute right-0 bottom-0 h-0 w-0 opacity-0"
+      />
+    </span>
   );
 }
 
@@ -410,12 +503,15 @@ function CourseIcon({ course }: { course: Course }) {
  */
 function CourseRow({
   course,
+  sharedLogo,
   open,
   onToggle,
   skills,
   certExists,
 }: {
   course: Course;
+  /** The provider's logo saved elsewhere (another course or a credential). */
+  sharedLogo?: Blob;
   open: boolean;
   onToggle: () => void;
   skills: Skill[];
@@ -496,9 +592,10 @@ function CourseRow({
           </svg>
         </button>
 
-        <CourseIcon course={course} />
+        <CourseIcon course={course} sharedLogo={sharedLogo} />
 
-        <div className="min-w-0 flex-1">
+        {/* Phones: the title gets the whole first line; date and actions wrap below. */}
+        <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-6.5rem)]">
           <input
             defaultValue={course.title}
             onBlur={(e) => saveTitle(e.target.value)}
@@ -514,35 +611,22 @@ function CourseRow({
           />
         </div>
 
-        <span
-          className="flex shrink-0 items-center gap-1.5"
+        <DateCell
+          label={done ? "done" : overdue ? "late" : "by"}
+          value={done ? course.completedDate : course.targetDate}
+          tone={overdue ? "danger" : "faint"}
           title={done ? "Date completed" : "Target completion date"}
-        >
-          <span
-            className={`font-mono text-[10px] uppercase ${
-              overdue ? "text-danger" : "text-ink-faint"
-            }`}
-          >
-            {done ? "done" : overdue ? "late" : "by"}
-          </span>
-          <input
-            type="date"
-            value={(done ? course.completedDate : course.targetDate) ?? ""}
-            onChange={(e) =>
-              void courseRepo.update(
-                course.id,
-                done
-                  ? { completedDate: e.target.value || undefined }
-                  : { targetDate: e.target.value || undefined },
-              )
-            }
-            className={`w-[8.25rem] bg-transparent font-mono text-xs outline-none focus:bg-raised ${
-              overdue ? "text-danger" : "text-ink-muted"
-            }`}
-          />
-        </span>
+          onChange={(v) =>
+            void courseRepo.update(
+              course.id,
+              done ? { completedDate: v } : { targetDate: v },
+            )
+          }
+        />
 
-        <span className="flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+        {/* Always visible (hover-only hid them on touch screens) and fixed
+            width, so the date column lines up whatever the status. */}
+        <span className="flex w-36 shrink-0 items-center justify-end gap-2 max-sm:order-4 max-sm:ml-auto max-sm:w-auto">
           {course.status === "planned" && (
             <button
               onClick={() =>
@@ -586,9 +670,21 @@ function CourseRow({
               </button>
             ))}
           <button
-            onClick={() => void courseRepo.remove(course.id)}
-            className="text-sm leading-none text-ink-faint transition-colors hover:text-danger"
+            onClick={() => {
+              const loses =
+                course.note?.trim() || course.logo || course.url || course.skillIds?.length;
+              if (
+                loses &&
+                !window.confirm(
+                  `Delete "${course.title}" and its notes, link and logo? This can't be undone.`,
+                )
+              )
+                return;
+              void courseRepo.remove(course.id);
+            }}
+            className="grid size-7 place-items-center rounded-sm text-sm leading-none text-ink-faint transition-colors hover:bg-raised hover:text-danger"
             title="Delete course"
+            aria-label={`Delete ${course.title}`}
           >
             ×
           </button>

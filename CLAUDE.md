@@ -280,3 +280,11 @@ The framed gallery looked uneven because every certificate is a different shape,
 * **Cover thumbnails are keyed by file signature** (size, type, name, lastModified), not Blob identity: every IndexedDB read returns a fresh Blob, so the old WeakMap missed on every visit. `peekThumbnail` lets a revisit paint covers on the first frame. Finished covers (JPEG data URLs) are also kept per slot in the device-local `meta` table as `pdfthumb:<slot>` — never synced or backed up — so a reload is fast too; they're cleared when a different account signs in on the device.
 * **`warmVaultCovers`** (`lib/vaultWarmup.ts`, called once from `Sidebar` on idle) loads PDF.js and prepares every stored PDF's cover before the Vault is opened. Its slot ids and width (300) must match `ShelfCard`'s or the cache keys differ.
 * **Desktop shelf fills the viewport**: the page is a column, the grid takes the remaining height, cards are full height, and the cover is the flexible part (`lg:flex-1 lg:[contain:size]` — the size containment stops the full-size template preview inside it from inflating the row) with the paper sized by height. Opening File info shrinks that card's cover instead of stretching the row. Phones keep the compact rows.
+
+### 7.23 Courses: alignment and formatting pass (2026-11-22 — owner chose to keep the layout)
+
+* Date and action columns are fixed width (`w-36` each) so every row's date lines up; actions are always visible (hover-only hid them on touch screens).
+* `DateCell` shows "21 Jun 2026" / "set date" via `parseLocalDate` + `formatDate` and opens the native picker with `showPicker()`; the `<input type="date">` stays in the DOM but hidden. Completed courses sort by `completedDate`, newest first.
+* Course icons: own logo → issuer logo shared with Certifications (`issuerKey`) → favicon → two-letter monogram on `monogramColour`. Uploads go through `shrinkLogo`. Delete confirms when notes, link, logo or skill links would be lost.
+* Phones: the title takes the first line; date and actions wrap below.
+* Three redesigns were mocked (focus card, lanes, timeline) and declined for now — A and B would need a new per-course progress field.
