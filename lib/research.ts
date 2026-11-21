@@ -20,6 +20,12 @@ export interface CompanyResearch {
   whyInterested?: string;
   opportunities?: string;
   talkingPoints?: string;
+  /* At-a-glance fields (§7.21). Absent from a function deployed before them. */
+  tagline?: string;
+  knownFor?: string[];
+  hook?: string;
+  angleShort?: string;
+  roleShort?: string;
   /**
    * Pages the lookup actually retrieved. Comes from the search tool's own
    * results, not from anything the model wrote, so it can't be a fabricated
@@ -38,14 +44,41 @@ export class ResearchNotSetupError extends Error {
   }
 }
 
-export async function researchCompany(input: {
+export function researchCompany(input: {
   name?: string;
   website: string;
 }): Promise<CompanyResearch> {
+  return invokeResearch({ name: input.name ?? "", website: input.website });
+}
+
+export type ShortFields = Pick<
+  CompanyResearch,
+  "tagline" | "knownFor" | "hook" | "angleShort" | "roleShort"
+>;
+
+/**
+ * Condense notes the user already has into the at-a-glance fields. No web
+ * search and no new facts server-side; it still uses one lookup from the
+ * daily allowance, because it's still a paid model call.
+ */
+export function shortenCompany(input: {
+  name: string;
+  notes: {
+    overview?: string;
+    specialisations?: string;
+    notableProject?: string;
+    whyInterested?: string;
+    opportunities?: string;
+  };
+}): Promise<ShortFields> {
+  return invokeResearch({ mode: "shorten", name: input.name, notes: input.notes });
+}
+
+async function invokeResearch(body: Record<string, unknown>): Promise<CompanyResearch> {
   if (!supabase) throw new ResearchNotSetupError();
 
   const { data, error } = await supabase.functions.invoke("research-company", {
-    body: { name: input.name ?? "", website: input.website },
+    body,
   });
 
   if (error) {

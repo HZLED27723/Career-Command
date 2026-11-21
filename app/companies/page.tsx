@@ -11,7 +11,12 @@ import type {
   Application,
   ResearchSource,
 } from "@/lib/types";
-import { researchCompany, ResearchNotSetupError } from "@/lib/research";
+import {
+  researchCompany,
+  shortenCompany,
+  ResearchNotSetupError,
+} from "@/lib/research";
+import { monogram, monogramColour } from "@/lib/credentials";
 
 const TRACKS: { value: RoleTrack; label: string; dot: string; text: string }[] =
   [
@@ -69,7 +74,7 @@ export default function CompaniesPage() {
     const q = query.trim().toLowerCase();
     if (!q) return sorted;
     return sorted.filter((c) =>
-      [c.name, c.overview, c.specialisations, (c.industries ?? []).join(" ")]
+      [c.name, c.tagline, c.overview, c.specialisations, (c.industries ?? []).join(" "), (c.knownFor ?? []).join(" ")]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -136,8 +141,8 @@ export default function CompaniesPage() {
     <div className="flex h-full">
       {/* ── Master list ─────────────────────────────────────────────── */}
       <aside
-        className={`flex w-72 shrink-0 flex-col border-r border-edge max-lg:w-64 max-md:w-full ${
-          detailOpenMobile ? "max-md:hidden" : ""
+        className={`flex w-72 shrink-0 flex-col border-r border-edge max-lg:w-full ${
+          detailOpenMobile ? "max-lg:hidden" : ""
         }`}
       >
         <div className="shrink-0 border-b border-edge p-3">
@@ -256,8 +261,8 @@ export default function CompaniesPage() {
 
       {/* ── Detail ──────────────────────────────────────────────────── */}
       <section
-        className={`min-w-0 flex-1 overflow-y-auto max-md:w-full ${
-          detailOpenMobile ? "" : "max-md:hidden"
+        className={`min-w-0 flex-1 overflow-y-auto max-lg:w-full ${
+          detailOpenMobile ? "" : "max-lg:hidden"
         }`}
       >
         {selected ? (
@@ -326,7 +331,8 @@ function CompanyRow({
             </span>
           )}
           <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">
-            {(company.industries ?? []).slice(0, 2).join(" · ") ||
+            {company.tagline?.trim() ||
+              (company.industries ?? []).slice(0, 2).join(" · ") ||
               company.specialisations ||
               "—"}
           </span>
@@ -336,14 +342,44 @@ function CompanyRow({
   );
 }
 
-/* ── Detail editor ──────────────────────────────────────────────────── */
+/* ── Detail: the at-a-glance dossier (§7.21) ───────────────────────── */
 
 type ResearchState =
   | { kind: "idle" }
   | { kind: "busy" }
+  | { kind: "shortening" }
   | { kind: "notSetup" }
   | { kind: "error"; message: string }
-  | { kind: "done"; filled: number };
+  | { kind: "done"; filled: number }
+  | { kind: "shortened"; filled: number };
+
+type TileKey = "about" | "known" | "hook" | "angle" | "open" | "points";
+const TILE_KEYS: TileKey[] = ["about", "known", "hook", "angle", "open", "points"];
+
+/** Short field → the long field it condenses. */
+const SHORT_OF = {
+  tagline: "overview",
+  knownFor: "specialisations",
+  hook: "notableProject",
+  angleShort: "whyInterested",
+  roleShort: "opportunities",
+} as const;
+
+/** First sentence of a long field, for tiles that have no short version yet. */
+function excerpt(text?: string, max = 120): string {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  const m = /^(.+?[.!?])(\s|$)/.exec(t);
+  const first = m ? m[1] : t;
+  return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first;
+}
+
+/** Talking points are stored as one block; show them as separate lines. */
+const splitPoints = (text?: string) =>
+  (text ?? "")
+    .split("\n")
+    .map((l) => l.replace(/^\s*(?:[-•*]|\d+[.)])\s*/, "").trim())
+    .filter(Boolean);
 
 function CompanyDetail({
   company,
@@ -359,6 +395,8 @@ function CompanyDetail({
   const [draft, setDraft] = useState<Company>(company);
   const [research, setResearch] = useState<ResearchState>({ kind: "idle" });
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [open, setOpen] = useState<Set<TileKey>>(new Set());
+  const [copied, setCopied] = useState(false);
   const pending = useRef<Partial<Company>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -397,8 +435,45 @@ function CompanyDetail({
     } as Partial<Company>);
   };
 
-  const isSuggested = (key: keyof Company) =>
-    (draft.aiFilled ?? []).includes(key as string);
+  const isSuggested = (...keys: (keyof Company)[]) =>
+    keys.some((k) => (draft.aiFilled ?? []).includes(k as string));
+
+  const toggle = (k: TileKey) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  const allOpen = TILE_KEYS.every((k) => open.has(k));
+
+  /**
+   * Fill only what's empty — never clobber edits — and mark what was filled
+   * so the UI can flag it as an AI suggestion.
+   */
+  const fillEmpty = (r: Record<string, unknown>, keys: (keyof Company)[]) => {
+    const next: Partial<Company> = {};
+    const aiFilled: string[] = [];
+    for (const key of keys) {
+      const val = r[key];
+      const cur = draft[key];
+      if (Array.isArray(val)) {
+        const tags = val.map((v) => String(v).trim()).filter(Boolean);
+        if (tags.length && !(Array.isArray(cur) && cur.length)) {
+          (next as Record<string, unknown>)[key] = tags;
+          aiFilled.push(key);
+        }
+      } else if (typeof val === "string" && val.trim() && !(typeof cur === "string" && cur.trim())) {
+        (next as Record<string, unknown>)[key] = val.trim();
+        aiFilled.push(key);
+      }
+    }
+    next.aiFilled = [
+      ...(draft.aiFilled ?? []).filter((k) => !aiFilled.includes(k)),
+      ...aiFilled,
+    ];
+    return { next, filled: aiFilled.length };
+  };
 
   const runResearch = async () => {
     const website = (draft.website ?? "").trim();
@@ -409,31 +484,20 @@ function CompanyDetail({
     setResearch({ kind: "busy" });
     try {
       const r = await researchCompany({ name: draft.name, website });
-      // Only fill sections that are currently empty — never clobber edits.
-      const next: Partial<Company> = {};
-      let filled = 0;
-      // Which fields this lookup wrote, so the UI can mark them as AI
-      // suggestions and leave everything the user typed unmarked.
-      const aiFilled: string[] = [];
-      const setIfEmpty = (key: keyof Company, val?: string) => {
-        const cur = (draft[key] as string | undefined)?.trim();
-        if (val && val.trim() && !cur) {
-          (next as Record<string, unknown>)[key] = val.trim();
-          aiFilled.push(key);
-          filled++;
-        }
-      };
-      setIfEmpty("overview", r.overview);
-      setIfEmpty("specialisations", r.specialisations);
-      setIfEmpty("notableProject", r.notableProject);
-      setIfEmpty("whyInterested", r.whyInterested);
-      setIfEmpty("opportunities", r.opportunities);
-      setIfEmpty("talkingPoints", r.talkingPoints);
-      if (r.industries?.length && !(draft.industries ?? []).length) {
-        next.industries = r.industries;
-        aiFilled.push("industries");
-        filled++;
-      }
+      const { next, filled } = fillEmpty(r as Record<string, unknown>, [
+        "overview",
+        "specialisations",
+        "industries",
+        "notableProject",
+        "whyInterested",
+        "opportunities",
+        "talkingPoints",
+        "tagline",
+        "knownFor",
+        "hook",
+        "angleShort",
+        "roleShort",
+      ]);
       next.researchedAt = new Date().toISOString();
       /*
        * Left undefined when the backend didn't report sources at all — an
@@ -442,11 +506,6 @@ function CompanyDetail({
        * search. Undefined means unknown; [] means genuinely nothing found.
        */
       next.sources = r.sources;
-      // Fields the user has since rewritten stop counting as AI-filled.
-      next.aiFilled = [
-        ...(draft.aiFilled ?? []).filter((k) => !aiFilled.includes(k)),
-        ...aiFilled,
-      ];
       patch(next);
       flush();
       setResearch({ kind: "done", filled });
@@ -460,6 +519,52 @@ function CompanyDetail({
     }
   };
 
+  /** Short fields that are empty while their long field has text. */
+  const missingShort = (Object.keys(SHORT_OF) as (keyof typeof SHORT_OF)[]).filter(
+    (s) => {
+      const cur = draft[s];
+      const empty = Array.isArray(cur) ? cur.length === 0 : !cur?.trim();
+      return empty && Boolean(draft[SHORT_OF[s]]?.trim());
+    },
+  );
+
+  const runShorten = async () => {
+    setResearch({ kind: "shortening" });
+    try {
+      const r = await shortenCompany({
+        name: draft.name,
+        notes: {
+          overview: draft.overview,
+          specialisations: draft.specialisations,
+          notableProject: draft.notableProject,
+          whyInterested: draft.whyInterested,
+          opportunities: draft.opportunities,
+        },
+      });
+      // A function deployed before shorten mode ignores it and returns none
+      // of these keys — say so instead of reporting "nothing to fill".
+      if (!["tagline", "knownFor", "hook", "angleShort", "roleShort"].some((k) => k in r)) {
+        setResearch({
+          kind: "error",
+          message:
+            "The research function on your Supabase project needs updating before it can shorten (see DEPLOY.md).",
+        });
+        return;
+      }
+      const { next, filled } = fillEmpty(r as Record<string, unknown>, missingShort);
+      patch(next);
+      flush();
+      setResearch({ kind: "shortened", filled });
+    } catch (e) {
+      if (e instanceof ResearchNotSetupError) setResearch({ kind: "notSetup" });
+      else
+        setResearch({
+          kind: "error",
+          message: e instanceof Error ? e.message : "Shorten failed.",
+        });
+    }
+  };
+
   const linkedApps = apps.filter(
     (a) =>
       draft.name.trim() &&
@@ -469,63 +574,57 @@ function CompanyDetail({
   const logApplication = async () => {
     await applicationRepo.add({
       company: draft.name.trim() || "Untitled",
-      role: "",
+      role: draft.roleShort?.trim() ?? "",
       track: draft.track ?? "engineering",
       status: "draft",
     });
   };
+
+  const points = splitPoints(draft.talkingPoints);
+  const copyPoints = async () => {
+    try {
+      await navigator.clipboard.writeText(points.map((p, i) => `${i + 1}. ${p}`).join("\n"));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — the text is still on screen to select */
+    }
+  };
+
+  const tagline = draft.tagline?.trim() || excerpt(draft.overview);
+  const known = draft.knownFor ?? [];
+  const hook = draft.hook?.trim() || excerpt(draft.notableProject, 90);
+  const angle = draft.angleShort?.trim() || excerpt(draft.whyInterested, 90);
+  const role = draft.roleShort?.trim() || excerpt(draft.opportunities, 90);
+  const busy = research.kind === "busy" || research.kind === "shortening";
 
   return (
     <div className="mx-auto max-w-3xl p-6 max-md:p-4">
       {/* Mobile back */}
       <button
         onClick={onBack}
-        className="mb-3 hidden items-center gap-1 text-xs text-ink-muted transition-colors hover:text-ink max-md:flex"
+        className="mb-3 hidden items-center gap-1 text-xs text-ink-muted transition-colors hover:text-ink max-lg:flex"
       >
         <ChevronLeftIcon /> All companies
       </button>
 
-      {/* Header: name + priority + track */}
-      <input
-        value={draft.name}
-        onChange={(e) => patch({ name: e.target.value })}
-        placeholder="Company name"
-        className="w-full border-none bg-transparent text-2xl font-semibold tracking-tight outline-none placeholder:text-ink-faint"
-      />
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <ChipRow
-          label="Priority"
-          options={PRIORITIES.map((p) => ({
-            value: p.value,
-            label: p.label,
-            dot: p.dot,
-          }))}
-          value={draft.priority}
-          onChange={(v) => patch({ priority: v as CompanyPriority })}
-        />
-        <ChipRow
-          label="Track"
-          options={TRACKS.map((t) => ({
-            value: t.value,
-            label: t.label,
-            dot: t.dot,
-          }))}
-          value={draft.track}
-          onChange={(v) => patch({ track: v as RoleTrack })}
-        />
-      </div>
-
-      {/* Website + AI research */}
-      <div className="mt-5 rounded-lg border border-edge bg-panel/50 p-3.5">
-        <div className="flex items-center gap-2 max-sm:flex-col max-sm:items-stretch">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-sm border border-edge bg-bg px-2.5">
-            <GlobeIcon />
+      {/* ── Header: who they are, in one line ─────────────────────── */}
+      <div className="flex items-start gap-3.5">
+        <span
+          aria-hidden
+          className="grid size-12 shrink-0 place-items-center rounded-lg font-mono text-sm font-semibold text-mist ring-1 ring-edge-strong"
+          style={{ backgroundColor: monogramColour(draft.name) }}
+        >
+          {monogram(draft.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
             <input
-              value={draft.website ?? ""}
-              onChange={(e) => patch({ website: e.target.value })}
-              placeholder="company.com"
-              className="min-w-0 flex-1 bg-transparent py-2 text-xs outline-none placeholder:text-ink-faint"
+              value={draft.name}
+              onChange={(e) => patch({ name: e.target.value })}
+              placeholder="Company name"
+              aria-label="Company name"
+              className="min-w-0 flex-1 border-none bg-transparent text-2xl font-semibold tracking-tight outline-none placeholder:text-ink-faint"
             />
             {draft.website?.trim() && (
               <a
@@ -534,14 +633,77 @@ function CompanyDetail({
                 rel="noopener noreferrer"
                 className="shrink-0 text-ink-faint transition-colors hover:text-accent"
                 title="Open website"
+                aria-label="Open website"
               >
                 <ExternalLinkIcon />
               </a>
             )}
           </div>
           <button
+            onClick={() => toggle("about")}
+            aria-expanded={open.has("about")}
+            className="mt-0.5 block max-w-full text-left text-sm text-ink-muted transition-colors hover:text-ink"
+          >
+            {tagline || <span className="text-ink-faint">Add a one-line summary…</span>}
+          </button>
+          {(draft.industries ?? []).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(draft.industries ?? []).slice(0, 4).map((ind) => (
+                <span key={ind} className="rounded-full border border-edge bg-raised px-2 py-0.5 text-[10px] text-ink-muted">
+                  {ind}
+                </span>
+              ))}
+              {(draft.industries ?? []).length > 4 && (
+                <span className="px-1 py-0.5 text-[10px] text-ink-faint">
+                  +{(draft.industries ?? []).length - 4}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <ChipRow
+          label="Priority"
+          options={PRIORITIES.map((p) => ({ value: p.value, label: p.label, dot: p.dot }))}
+          value={draft.priority}
+          onChange={(v) => patch({ priority: v as CompanyPriority })}
+        />
+        <ChipRow
+          label="Track"
+          options={TRACKS.map((t) => ({ value: t.value, label: t.label, dot: t.dot }))}
+          value={draft.track}
+          onChange={(v) => patch({ track: v as RoleTrack })}
+        />
+      </div>
+
+      {/* ── Research: one compact bar ──────────────────────────────── */}
+      <div className="mt-4 rounded-lg border border-edge bg-panel/50 p-2.5">
+        <div className="flex items-center gap-2 max-sm:flex-col max-sm:items-stretch">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-sm border border-edge bg-bg px-2.5">
+            <GlobeIcon />
+            <input
+              value={draft.website ?? ""}
+              onChange={(e) => patch({ website: e.target.value })}
+              placeholder="company.com"
+              aria-label="Company website"
+              className="min-w-0 flex-1 bg-transparent py-2 text-xs outline-none placeholder:text-ink-faint"
+            />
+          </div>
+          {missingShort.length > 0 && (
+            <button
+              onClick={runShorten}
+              disabled={busy}
+              title="Condense what's already written into the short tiles — no new facts"
+              className="flex shrink-0 items-center justify-center gap-1.5 rounded-sm border border-edge-strong px-3 py-2 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-ink disabled:opacity-60"
+            >
+              {research.kind === "shortening" ? <Spinner light /> : <SparkleIcon />} Shorten
+            </button>
+          )}
+          <button
             onClick={runResearch}
-            disabled={research.kind === "busy"}
+            disabled={busy}
             className="flex shrink-0 items-center justify-center gap-1.5 rounded-sm bg-accent px-3 py-2 text-xs font-semibold text-bg transition-colors hover:bg-accent-strong disabled:opacity-60"
           >
             {research.kind === "busy" ? (
@@ -555,93 +717,263 @@ function CompanyDetail({
             )}
           </button>
         </div>
-
-        {research.kind === "done" && (
-          <p className="mt-2.5 text-[11px] text-accent-strong">
-            {research.filled > 0
-              ? `Filled ${research.filled} empty section${research.filled > 1 ? "s" : ""} — review and tweak below.`
-              : "Nothing new to fill — your sections are already written."}
-          </p>
-        )}
-        {research.kind === "error" && (
-          <p className="mt-2.5 text-[11px] text-danger">{research.message}</p>
-        )}
-        {research.kind === "notSetup" && (
-          <div className="mt-2.5 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-[11px] leading-relaxed text-warn">
-            AI research isn&apos;t connected yet. It needs a one-time backend
-            setup (an AI key on your Supabase project). Ask Claude to
-            &ldquo;set up AI research&rdquo; and it&apos;ll walk you through it.
-            You can still fill every section by hand below.
-          </div>
-        )}
-        <p className="mt-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-          <SparkleIcon />
-          Paste a website, let AI draft every section, then make it yours.
-          {draft.researchedAt && (
-            <span className="text-ink-faint/70">
-              · researched {relTime(draft.researchedAt)}
-            </span>
-          )}
+        <p className="mt-2 px-0.5 text-[11px] text-ink-faint">
+          {research.kind === "done"
+            ? research.filled > 0
+              ? <span className="text-accent-strong">Filled {research.filled} empty section{research.filled > 1 ? "s" : ""} — review the tiles below.</span>
+              : "Nothing new to fill — your sections are already written."
+            : research.kind === "shortened"
+              ? <span className="text-accent-strong">Shortened {research.filled} tile{research.filled === 1 ? "" : "s"} from what you&apos;d written.</span>
+              : research.kind === "error"
+                ? <span className="text-danger">{research.message}</span>
+                : research.kind === "notSetup"
+                  ? <span className="text-warn">AI research isn&apos;t connected yet — every tile can still be filled by hand.</span>
+                  : draft.researchedAt
+                    ? `Researched ${relTime(draft.researchedAt)} · AI only fills empty sections, never your edits.`
+                    : "Paste a website and AI drafts every section. It only fills what's empty."}
         </p>
       </div>
 
-      {/* Sections */}
-      <div className="mt-5 space-y-4">
-        <Section
-          label="Overview"
-          hint="What the company is and does"
-          value={draft.overview}
-          suggested={isSuggested("overview")}
-          onChange={(v) => patchField("overview", v)}
-        />
-        <Section
-          label="Specialisations"
-          hint="What they're known for / specialise in"
-          value={draft.specialisations}
-          suggested={isSuggested("specialisations")}
-          onChange={(v) => patchField("specialisations", v)}
-        />
+      {/* ── The glance ─────────────────────────────────────────────── */}
+      <div className="mt-5 mb-2 flex items-center justify-between">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+          At a glance
+        </p>
+        <button
+          onClick={() => setOpen(allOpen ? new Set() : new Set(TILE_KEYS))}
+          className="font-mono text-[10px] uppercase tracking-widest text-ink-faint transition-colors hover:text-accent"
+        >
+          {allOpen ? "Collapse all" : "Full write-up"}
+        </button>
+      </div>
 
-        <IndustriesField
-          value={draft.industries ?? []}
-          onChange={(v) => patchField("industries", v)}
-        />
+      <div className="grid gap-3 sm:grid-cols-2">
+        {open.has("about") && (
+          <GlanceTile
+            label="About"
+            open
+            suggested={isSuggested("tagline", "overview", "industries")}
+            onToggle={() => toggle("about")}
+            preview={null}
+          >
+            <ShortField
+              label="One-line summary"
+              hint="Up to 10 words"
+              value={draft.tagline}
+              placeholder={excerpt(draft.overview) || "What the company is"}
+              onChange={(v) => patchField("tagline", v)}
+            />
+            <Section
+              label="Overview"
+              hint="What the company is and does"
+              value={draft.overview}
+              suggested={isSuggested("overview")}
+              onChange={(v) => patchField("overview", v)}
+            />
+            <TagsField
+              label="Industries"
+              hint="Comma-separated tags"
+              placeholder="Aerospace, Defence, Manufacturing"
+              value={draft.industries ?? []}
+              onChange={(v) => patchField("industries", v)}
+            />
+          </GlanceTile>
+        )}
 
-        <Section
-          label="Notable project"
-          hint="One thing you can reference in a cover letter or interview"
-          value={draft.notableProject}
-          suggested={isSuggested("notableProject")}
-          onChange={(v) => patchField("notableProject", v)}
-        />
-        <Section
-          label="Why I'm interested"
-          hint="Your personal angle — the cover-letter hook"
+        <GlanceTile
+          label="Known for"
+          open={open.has("known")}
+          suggested={isSuggested("knownFor", "specialisations")}
+          onToggle={() => toggle("known")}
+          preview={
+            known.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {known.map((k) => (
+                  <span key={k} className="rounded-full border border-edge bg-raised px-2 py-0.5 text-[11px] text-ink">
+                    {k}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <Excerpt text={excerpt(draft.specialisations, 100)} empty="What they're known for" />
+            )
+          }
+        >
+          <TagsField
+            label="Tags"
+            hint="2–4 short tags"
+            placeholder="Cataract surgery, Lasers, Lenses"
+            value={known}
+            onChange={(v) => patchField("knownFor", v)}
+          />
+          <Section
+            label="Specialisations"
+            hint="Full write-up"
+            value={draft.specialisations}
+            suggested={isSuggested("specialisations")}
+            onChange={(v) => patchField("specialisations", v)}
+          />
+        </GlanceTile>
+
+        <GlanceTile
+          label="Drop this in"
+          open={open.has("hook")}
+          suggested={isSuggested("hook", "notableProject")}
+          onToggle={() => toggle("hook")}
+          preview={
+            hook ? (
+              <p className={draft.hook?.trim() ? "text-base leading-snug font-semibold" : "line-clamp-2 text-sm text-ink"}>
+                {hook}
+              </p>
+            ) : (
+              <Excerpt text="" empty="One fact worth mentioning" />
+            )
+          }
+        >
+          <ShortField
+            label="The fact"
+            hint="Up to 8 words"
+            value={draft.hook}
+            placeholder={excerpt(draft.notableProject, 60) || "$876M on R&D in 2024"}
+            onChange={(v) => patchField("hook", v)}
+          />
+          <Section
+            label="Notable project"
+            hint="Full write-up"
+            value={draft.notableProject}
+            suggested={isSuggested("notableProject")}
+            onChange={(v) => patchField("notableProject", v)}
+          />
+        </GlanceTile>
+
+        <GlanceTile
+          label="Your angle"
           accent
-          value={draft.whyInterested}
-          suggested={isSuggested("whyInterested")}
-          reviewNote="This is a guess at a motivation, not your motivation. Rewrite it in your own words before it goes anywhere near a cover letter — a reason you don't actually hold reads as hollow in an interview."
-          onChange={(v) => patchField("whyInterested", v)}
-        />
-        <Section
-          label="Opportunities & internships"
-          hint="Open roles, program deadlines, application links"
-          value={draft.opportunities}
-          suggested={isSuggested("opportunities")}
-          onChange={(v) => patchField("opportunities", v)}
-        />
-        <Section
-          label="Interview talking points"
-          hint="Smart things to raise when you meet them"
-          value={draft.talkingPoints}
-          suggested={isSuggested("talkingPoints")}
-          onChange={(v) => patchField("talkingPoints", v)}
-        />
+          open={open.has("angle")}
+          suggested={isSuggested("angleShort", "whyInterested")}
+          onToggle={() => toggle("angle")}
+          preview={
+            angle ? (
+              <p className={draft.angleShort?.trim() ? "text-base leading-snug font-semibold" : "line-clamp-2 text-sm text-ink"}>
+                {angle}
+              </p>
+            ) : (
+              <Excerpt text="" empty="Why you want to work here" />
+            )
+          }
+        >
+          <ShortField
+            label="In a line"
+            hint="Up to 10 words, your words"
+            value={draft.angleShort}
+            placeholder={excerpt(draft.whyInterested, 60) || "Why them, in one line"}
+            onChange={(v) => patchField("angleShort", v)}
+          />
+          <Section
+            label="Why I'm interested"
+            hint="Full write-up"
+            accent
+            value={draft.whyInterested}
+            suggested={isSuggested("whyInterested")}
+            reviewNote="This is a guess at a motivation, not your motivation. Rewrite it in your own words before it goes anywhere near a cover letter — a reason you don't actually hold reads as hollow in an interview."
+            onChange={(v) => patchField("whyInterested", v)}
+          />
+        </GlanceTile>
 
-        <ResearchSources
-          sources={draft.sources}
-          researchedAt={draft.researchedAt}
-        />
+        <GlanceTile
+          label="Open now"
+          open={open.has("open")}
+          suggested={isSuggested("roleShort", "opportunities")}
+          onToggle={() => toggle("open")}
+          preview={
+            role ? (
+              <p className={draft.roleShort?.trim() ? "text-base leading-snug font-semibold" : "line-clamp-2 text-sm text-ink"}>
+                {role}
+              </p>
+            ) : (
+              <Excerpt text="" empty="Roles and programs" />
+            )
+          }
+          footer={
+            linkedApps.length > 0 ? (
+              <Link href="/tracker" className="font-mono text-[10px] uppercase tracking-widest text-ink-muted transition-colors hover:text-accent">
+                In tracker · {linkedApps[0].status.replace("-", " ")} →
+              </Link>
+            ) : (
+              <button
+                onClick={logApplication}
+                className="text-[11px] font-medium text-accent transition-colors hover:text-accent-strong"
+              >
+                + Add to tracker
+              </button>
+            )
+          }
+        >
+          <ShortField
+            label="The role"
+            hint="Up to 8 words"
+            value={draft.roleShort}
+            placeholder={excerpt(draft.opportunities, 60) || "Summer internship · closes Aug"}
+            onChange={(v) => patchField("roleShort", v)}
+          />
+          <Section
+            label="Opportunities & internships"
+            hint="Full write-up — programs, deadlines, links"
+            value={draft.opportunities}
+            suggested={isSuggested("opportunities")}
+            onChange={(v) => patchField("opportunities", v)}
+          />
+        </GlanceTile>
+      </div>
+
+      {/* ── Talking points, one per line ──────────────────────────── */}
+      <div className="mt-3 rounded-lg border border-edge bg-panel p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+            Talking points
+            {isSuggested("talkingPoints") && <AiBadge />}
+          </span>
+          <span className="flex items-center gap-3">
+            {points.length > 0 && (
+              <button onClick={copyPoints} className="font-mono text-[10px] uppercase tracking-widest text-ink-faint transition-colors hover:text-accent">
+                {copied ? "Copied" : "Copy all"}
+              </button>
+            )}
+            <button
+              onClick={() => toggle("points")}
+              aria-expanded={open.has("points")}
+              className="font-mono text-[10px] uppercase tracking-widest text-ink-faint transition-colors hover:text-accent"
+            >
+              {open.has("points") ? "Done" : "Edit"}
+            </button>
+          </span>
+        </div>
+        {open.has("points") ? (
+          <div className="mt-2">
+            <Section
+              label="One per line"
+              hint="Each line becomes a point"
+              value={draft.talkingPoints}
+              suggested={isSuggested("talkingPoints")}
+              onChange={(v) => patchField("talkingPoints", v)}
+            />
+          </div>
+        ) : points.length > 0 ? (
+          <ol className="mt-1">
+            {points.map((p, i) => (
+              <li key={i} className="flex gap-3 border-t border-edge py-2 text-sm leading-snug first:border-t-0">
+                <span className="pt-0.5 font-mono text-[10px] text-ink-faint">{String(i + 1).padStart(2, "0")}</span>
+                <span className="min-w-0">{p}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-2 text-xs text-ink-faint">Things to raise when you meet them — research fills these, or add your own.</p>
+        )}
+      </div>
+
+      <div className="mt-3">
+        <ResearchSources sources={draft.sources} researchedAt={draft.researchedAt} />
       </div>
 
       {/* Linked applications */}
@@ -660,10 +992,7 @@ function CompanyDetail({
         {linkedApps.length > 0 ? (
           <ul className="mt-2.5 space-y-1.5">
             {linkedApps.map((a) => (
-              <li
-                key={a.id}
-                className="flex items-center gap-2 text-xs text-ink-muted"
-              >
+              <li key={a.id} className="flex items-center gap-2 text-xs text-ink-muted">
                 <span className="size-1 rounded-full bg-ink-faint" />
                 <span className="truncate">{a.role || "—"}</span>
                 <span className="ml-auto shrink-0 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
@@ -715,6 +1044,106 @@ function CompanyDetail({
         )}
       </div>
     </div>
+  );
+}
+
+/* ── Glance pieces ──────────────────────────────────────────────────── */
+
+const AiBadge = () => (
+  <span className="rounded-xs border border-warn/40 px-1.5 py-px text-[10px] normal-case tracking-normal text-warn">
+    AI draft
+  </span>
+);
+
+/**
+ * One tile: a short preview that opens, in place and full width, to the short
+ * version and the full write-up — both editable.
+ */
+function GlanceTile({
+  label,
+  preview,
+  children,
+  footer,
+  open,
+  onToggle,
+  suggested,
+  accent,
+}: {
+  label: string;
+  preview: React.ReactNode;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  suggested?: boolean;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={`flex flex-col rounded-lg border bg-panel transition-colors ${
+        open ? "border-accent-dim sm:col-span-2" : "border-edge hover:border-edge-strong"
+      }`}
+    >
+      <button onClick={onToggle} aria-expanded={open} className="w-full p-3.5 text-left">
+        <span className="flex items-center justify-between gap-2">
+          <span className={`font-mono text-[10px] uppercase tracking-widest ${accent ? "text-accent" : "text-ink-faint"}`}>
+            {label}
+          </span>
+          <span className="flex items-center gap-2">
+            {suggested && <AiBadge />}
+            <svg viewBox="0 0 24 24" aria-hidden className={`size-3.5 fill-none stroke-ink-faint stroke-2 transition-transform ${open ? "rotate-180" : ""}`}>
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </span>
+        {preview && <span className="mt-2 block">{preview}</span>}
+      </button>
+      {footer && !open && <div className="-mt-1 px-3.5 pb-3">{footer}</div>}
+      {open && (
+        <div className="animate-fade-in space-y-3 border-t border-edge p-3.5">
+          {children}
+          {footer && <div>{footer}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A long field's first sentence standing in for a missing short version. */
+function Excerpt({ text, empty }: { text: string; empty: string }) {
+  return text ? (
+    <p className="line-clamp-2 text-sm text-ink">{text}</p>
+  ) : (
+    <p className="text-sm text-ink-faint">{empty} — add it</p>
+  );
+}
+
+function ShortField({
+  label,
+  hint,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value?: string;
+  placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 flex items-baseline gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink">{label}</span>
+        <span className="text-[10px] text-ink-faint">{hint}</span>
+      </span>
+      <input
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-sm border border-edge bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-faint focus:border-accent-dim"
+      />
+    </label>
   );
 }
 
@@ -790,10 +1219,16 @@ function Section({
   );
 }
 
-function IndustriesField({
+function TagsField({
+  label,
+  hint,
+  placeholder,
   value,
   onChange,
 }: {
+  label: string;
+  hint: string;
+  placeholder: string;
   value: string[];
   onChange: (v: string[]) => void;
 }) {
@@ -818,15 +1253,15 @@ function IndustriesField({
     <label className="block">
       <span className="mb-1 flex items-baseline gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-ink">
-          Industries
+          {label}
         </span>
-        <span className="text-[10px] text-ink-faint">Comma-separated tags</span>
+        <span className="text-[10px] text-ink-faint">{hint}</span>
       </span>
       <input
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => commit(text)}
-        placeholder="Aerospace, Defence, Manufacturing"
+        placeholder={placeholder}
         className="w-full rounded-sm border border-edge bg-panel px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-faint focus:border-accent-dim"
       />
       {value.length > 0 && (
@@ -861,7 +1296,7 @@ function ChipRow({
       <span className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
         {label}
       </span>
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         {options.map((o) => {
           const on = o.value === value;
           return (
@@ -981,8 +1416,12 @@ const BuildingIcon = () => (
     <path d="M4 21V5a1 1 0 011-1h9a1 1 0 011 1v16M15 9h4a1 1 0 011 1v11M4 21h16M8 8h3M8 12h3M8 16h3" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
-const Spinner = () => (
-  <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-bg/40 border-t-bg" />
+const Spinner = ({ light }: { light?: boolean }) => (
+  <span
+    className={`inline-block size-3.5 animate-spin rounded-full border-2 ${
+      light ? "border-ink-faint/40 border-t-ink" : "border-bg/40 border-t-bg"
+    }`}
+  />
 );
 
 /**

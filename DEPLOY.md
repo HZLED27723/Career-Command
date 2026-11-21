@@ -118,3 +118,18 @@ There's no git remote on this repo — deploys go straight from the CLI:
 ```bash
 npx vercel --prod
 ```
+
+### Companies "at a glance" (2026-11-21)
+
+The research function gained short at-a-glance fields and a `shorten` mode. Redeploy it once:
+
+```bash
+npx.cmd supabase login
+npx.cmd supabase functions deploy research-company --project-ref qfeoidxzaqesyysskscq
+```
+
+Until then the Companies tiles show the first sentence of each section, and Shorten reports that the function needs updating.
+
+### Deploying from this machine
+
+`vercel --prod` from the git checkout is refused (the GitHub commit author isn't on the Vercel team). Deploy from a copy without `.git` — the same files, no commit metadata attached. PowerShell blocks `npx.ps1` here, so use `npx.cmd`.

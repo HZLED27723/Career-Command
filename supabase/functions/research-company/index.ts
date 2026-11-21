@@ -94,6 +94,13 @@ async function claimQuota(authHeader: string): Promise<
   return { ok: true, used: row.used, quota: row.quota };
 }
 
+/** The at-a-glance fields, shared by full research and shorten mode. */
+const SHORT_KEYS = `  "tagline": "at most 10 words: what the company is, no marketing language",
+  "knownFor": ["2-4 tags of at most 3 words each: what they're known for technically"],
+  "hook": "at most 8 words: the single most quotable fact from the notable project",
+  "angleShort": "at most 10 words: the applicant's angle, condensed from whyInterested",
+  "roleShort": "at most 8 words: the main role or program open now, or \\"\\" if none is known"`;
+
 const SYSTEM = `You are a research assistant helping a job seeker prepare to apply to a company and interview there. Given a company's name and website, use web search to gather CURRENT, factual information, then return a concise dossier.
 
 Return ONLY a single JSON object — no preamble, no markdown fences, no commentary — with exactly these keys:
@@ -104,10 +111,22 @@ Return ONLY a single JSON object — no preamble, no markdown fences, no comment
   "notableProject": "one notable project, product, or achievement worth referencing",
   "whyInterested": "1-2 sentences written in first person from the applicant's perspective — a genuine, specific reason to want to work here (a cover-letter hook)",
   "opportunities": "internship / graduate programs, open roles, or application info if findable; otherwise a brief note on how they typically hire",
-  "talkingPoints": "2-4 smart, specific things to raise in an interview, as a short newline-separated list"
+  "talkingPoints": "2-4 smart, specific things to raise in an interview, as a short newline-separated list",
+${SHORT_KEYS}
 }
 
-Rules: Be specific and accurate — prefer facts you found via search over generic filler. If something genuinely can't be found, use an empty string "" (or [] for industries) rather than inventing details. Keep each field tight.`;
+Rules: Be specific and accurate — prefer facts you found via search over generic filler. If something genuinely can't be found, use an empty string "" (or [] for industries) rather than inventing details. Keep each field tight. The short fields must restate facts from the long fields — never add a fact that isn't in them.`;
+
+/**
+ * Shorten mode: condense a dossier the user already has into the at-a-glance
+ * fields. No web search, no new facts — it only restates what it's given.
+ */
+const SHORTEN_SYSTEM = `You condense a job seeker's notes about a company into short at-a-glance fields. Use ONLY the information in the notes provided — do not add facts, numbers or claims that aren't there. If a field can't be filled from the notes, return "" (or [] for knownFor).
+
+Return ONLY a single JSON object — no preamble, no markdown fences — with exactly these keys:
+{
+${SHORT_KEYS}
+}`;
 
 interface Block {
   type: string;
@@ -161,13 +180,20 @@ Deno.serve(async (req) => {
 
   let name = "";
   let website = "";
+  let mode = "research";
+  let notes: Record<string, unknown> = {};
   try {
     const body = await req.json();
     name = (body.name ?? "").toString().trim();
     website = (body.website ?? "").toString().trim();
+    mode = body.mode === "shorten" ? "shorten" : "research";
+    if (body.notes && typeof body.notes === "object") notes = body.notes;
   } catch {
     return json({ error: "Invalid request body." }, 400);
   }
+
+  if (mode === "shorten") return shorten(name, notes);
+
   if (!website) return json({ error: "A company website is required." }, 400);
 
   const messages: { role: string; content: unknown }[] = [
@@ -250,6 +276,69 @@ Deno.serve(async (req) => {
   // UI says so rather than implying research happened.
   return json({ ...parsed, sources }, 200);
 });
+
+/** Only these note fields are sent to the model in shorten mode. */
+const NOTE_KEYS = [
+  "overview",
+  "specialisations",
+  "notableProject",
+  "whyInterested",
+  "opportunities",
+] as const;
+
+/**
+ * Condense existing notes into the at-a-glance fields: one call, no tools,
+ * so it's quick and cheap. Quota was already claimed by the caller.
+ */
+async function shorten(name: string, notes: Record<string, unknown>) {
+  const lines = NOTE_KEYS.map((k) => {
+    const v = typeof notes[k] === "string" ? (notes[k] as string).trim() : "";
+    return v ? `${k}: ${v.slice(0, 2000)}` : "";
+  }).filter(Boolean);
+  if (lines.length === 0) {
+    return json({ error: "There's nothing written for this company yet to shorten." }, 400);
+  }
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 600,
+        system: SHORTEN_SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: `Company: ${name || "(unnamed)"}\n\nNotes:\n${lines.join("\n")}`,
+          },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return json({ error: data?.error?.message ?? "Anthropic API error." }, 502);
+    }
+    const text = ((data?.content ?? []) as Block[])
+      .filter((b) => b.type === "text" && b.text)
+      .map((b) => b.text as string)
+      .join("\n");
+    const parsed = extractJson(text);
+    if (!parsed) return json({ error: "Couldn't parse the shortened result." }, 502);
+    return json(parsed, 200);
+  } catch (e) {
+    const timedOut = e instanceof DOMException && e.name === "TimeoutError";
+    return json(
+      { error: timedOut ? "Shortening took too long — try again." : `Shorten failed: ${String(e)}` },
+      timedOut ? 504 : 502,
+    );
+  }
+}
 
 /** Pull the outermost JSON object out of the model's text response. */
 function extractJson(text: string): Record<string, unknown> | null {

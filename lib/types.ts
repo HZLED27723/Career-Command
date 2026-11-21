@@ -323,6 +323,21 @@ export interface Company {
   opportunities?: string;
   /** Ready-made talking points for interviews. */
   talkingPoints?: string;
+
+  /* ── At-a-glance versions (§7.21) ─────────────────────────────────
+     Short companions to the long fields above, shown as the dossier's
+     tiles. The long text is never replaced; these sit alongside it. When
+     one is missing the tile shows the first sentence of its long field. */
+  /** ≤10 words: what the company is — the header line. */
+  tagline?: string;
+  /** 2–4 short tags for what they're known for. */
+  knownFor?: string[];
+  /** ≤8 words: the one fact worth dropping into a cover letter or interview. */
+  hook?: string;
+  /** ≤10 words: the applicant's angle, in their voice. */
+  angleShort?: string;
+  /** ≤8 words: the main role or program open right now. */
+  roleShort?: string;
   /** ISO timestamp of the last AI research fill, if any. */
   researchedAt?: string;
   /**
