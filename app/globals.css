@@ -122,6 +122,31 @@
   }
 }
 
+/* PageBackdrop glows: a slow wander, transform-only so it stays on the
+   compositor. Two paths so the pair never moves in step. */
+@keyframes glow-drift-a {
+  0% {
+    transform: translate(-50%, -50%) translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) translate(6%, 5%) scale(1.08);
+  }
+  100% {
+    transform: translate(-50%, -50%) translate(-5%, 3%) scale(0.96);
+  }
+}
+@keyframes glow-drift-b {
+  0% {
+    transform: translate(-50%, -50%) translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) translate(-7%, -4%) scale(0.94);
+  }
+  100% {
+    transform: translate(-50%, -50%) translate(4%, -6%) scale(1.06);
+  }
+}
+
 html {
   /* Native controls (select, date picker) render dark */
   color-scheme: dark;
