@@ -500,10 +500,10 @@ function IssuerTile({
       style={url ? undefined : { backgroundColor: monogramColour(issuer) }}
     >
       {url ? (
-        <span className="absolute inset-0 grid place-items-center bg-paper p-1.5">
-          {/* eslint-disable-next-line @next/next/no-img-element -- a local Blob URL */}
-          <img src={url} alt="" className="max-h-full max-w-full object-contain" />
-        </span>
+        // Fills the tile edge to edge, like course icons (owner's call): no
+        // paper margin; a non-square logo is trimmed at its edges.
+        // eslint-disable-next-line @next/next/no-img-element -- a local Blob URL
+        <img src={url} alt="" className="absolute inset-0 size-full bg-paper object-cover" />
       ) : (
         <span className="font-mono text-sm font-semibold tracking-wide text-mist">
           {monogram(issuer)}
