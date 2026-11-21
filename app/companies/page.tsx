@@ -275,10 +275,15 @@ export default function CompaniesPage() {
               setSelectedId(null);
               setDetailOpenMobile(false);
             }}
-            onBack={() => setDetailOpenMobile(false)}
+            onBack={() => {
+              setDetailOpenMobile(false);
+              setSelectedId(null);
+            }}
           />
+        ) : sorted.length > 0 ? (
+          <ShortlistOverview companies={sorted} apps={apps ?? []} onOpen={open} />
         ) : (
-          <DetailEmpty hasCompanies={sorted.length > 0} onAdd={startDraft} />
+          <DetailEmpty hasCompanies={false} onAdd={startDraft} />
         )}
       </section>
     </div>
@@ -600,12 +605,14 @@ function CompanyDetail({
 
   return (
     <div className="mx-auto max-w-3xl p-6 max-md:p-4">
-      {/* Mobile back */}
+      {/* Back: to the list on phones, to the shortlist overview on desktop */}
       <button
         onClick={onBack}
-        className="mb-3 hidden items-center gap-1 text-xs text-ink-muted transition-colors hover:text-ink max-lg:flex"
+        className="mb-3 flex items-center gap-1 text-xs text-ink-muted transition-colors hover:text-ink"
       >
-        <ChevronLeftIcon /> All companies
+        <ChevronLeftIcon />
+        <span className="lg:hidden">All companies</span>
+        <span className="max-lg:hidden">Shortlist overview</span>
       </button>
 
       {/* ── Header: who they are, in one line ─────────────────────── */}
@@ -1333,6 +1340,195 @@ function ListEmpty({ onAdd }: { onAdd: () => void }) {
       </button>
     </div>
   );
+}
+
+/* ── Shortlist overview (nothing selected) ──────────────────────────── */
+
+const APP_STATUS: Record<Application["status"], { label: string; text: string; dot: string }> = {
+  draft: { label: "Draft", text: "text-ink-muted", dot: "bg-ink-faint" },
+  applied: { label: "Applied", text: "text-info", dot: "bg-info" },
+  "interview-scheduled": { label: "Interview", text: "text-warn", dot: "bg-warn" },
+  "offer-extended": { label: "Offer", text: "text-ok", dot: "bg-ok" },
+  rejected: { label: "Rejected", text: "text-danger", dot: "bg-danger" },
+};
+
+const sameCompany = (a: Application, c: Company) =>
+  a.company.trim().toLowerCase() === c.name.trim().toLowerCase();
+
+const isResearched = (c: Company) =>
+  Boolean(c.tagline?.trim() || c.overview?.trim() || c.researchedAt);
+
+/** The application that best describes where things stand with a company. */
+function latestApp(apps: Application[], c: Company): Application | undefined {
+  return apps
+    .filter((a) => sameCompany(a, c))
+    .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+}
+
+/**
+ * What the right pane shows when no company is open: the shortlist at a
+ * glance — counts, the next useful step for a few companies, and every
+ * company on a priority board. All derived from what's already stored;
+ * nothing is written by viewing it.
+ */
+function ShortlistOverview({
+  companies,
+  apps,
+  onOpen,
+}: {
+  companies: Company[];
+  apps: Application[];
+  onOpen: (id: number) => void;
+}) {
+  const withApp = companies.filter((c) => apps.some((a) => sameCompany(a, c)));
+  const researched = companies.filter(isResearched);
+  const keen = companies.filter((c) => (c.priority ?? "target") === "dream" || (c.priority ?? "target") === "target");
+
+  // Next steps: upcoming interviews first, then keen-but-not-applied, then
+  // unresearched. One line per company, five at most.
+  const today = new Date().toISOString().slice(0, 10);
+  const steps: { id: number; company: Company; verb: string; detail: string; tone: string }[] = [];
+  const seen = new Set<number>();
+  const push = (c: Company, verb: string, detail: string, tone: string) => {
+    if (seen.has(c.id) || steps.length >= 5) return;
+    seen.add(c.id);
+    steps.push({ id: c.id, company: c, verb, detail, tone });
+  };
+  for (const c of companies) {
+    const a = apps.find((x) => sameCompany(x, c) && x.interviewDate && x.interviewDate.slice(0, 10) >= today);
+    if (a) push(c, "Prepare", `Interview ${formatDay(a.interviewDate!)} · ${a.role || "role not set"}`, "bg-warn");
+  }
+  for (const c of keen) if (!apps.some((a) => sameCompany(a, c))) push(c, "Apply", `${priorityLabel(c)}, no application yet${c.roleShort ? ` · ${c.roleShort}` : ""}`, "bg-accent");
+  for (const c of companies) if (!isResearched(c)) push(c, "Research", "No dossier yet — one lookup fills it in", "bg-info");
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6 p-6 lg:p-8">
+      <div>
+        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">Your shortlist</p>
+        <h3 className="mt-1 text-xl font-semibold tracking-tight">Where you stand with each employer</h3>
+        <p className="mt-1 text-xs text-ink-muted">Pick any company to open its full dossier.</p>
+      </div>
+
+      {/* Counts */}
+      <div className="grid grid-cols-4 gap-3 max-xl:grid-cols-2">
+        <OverviewStat value={companies.length} label="Companies" />
+        <OverviewStat value={researched.length} of={companies.length} label="Researched" />
+        <OverviewStat value={withApp.length} of={companies.length} label="Applied to" />
+        <OverviewStat value={keen.length} label="Dream or target" />
+      </div>
+
+      {/* Next steps */}
+      {steps.length > 0 && (
+        <section aria-labelledby="next-steps" className="rounded-lg border border-edge bg-surface p-4">
+          <h4 id="next-steps" className="font-mono text-[10px] uppercase tracking-widest text-accent">
+            Next steps
+          </h4>
+          <ul className="mt-3 space-y-1.5">
+            {steps.map((s) => (
+              <li key={s.id}>
+                <button
+                  onClick={() => onOpen(s.id)}
+                  className="flex w-full items-center gap-3 rounded-md border border-edge bg-panel px-3 py-2.5 text-left transition-colors hover:border-accent-dim hover:bg-raised"
+                >
+                  <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${s.tone}`} />
+                  <span className="w-16 shrink-0 text-xs font-semibold">{s.verb}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{s.company.name}</span>
+                    <span className="block truncate text-[11px] text-ink-muted">{s.detail}</span>
+                  </span>
+                  <span aria-hidden className="text-xs text-ink-faint">→</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Priority board */}
+      <section aria-labelledby="by-priority">
+        <h4 id="by-priority" className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+          By priority
+        </h4>
+        <div className="mt-3 grid grid-cols-4 gap-3 max-xl:grid-cols-2">
+          {PRIORITIES.map((p) => {
+            const list = companies.filter((c) => (c.priority ?? "target") === p.value);
+            return (
+              <div key={p.value} className="min-w-0 rounded-lg border border-edge bg-surface/80 p-2.5">
+                <div className="mb-2 flex items-center gap-1.5 px-1">
+                  <span className={`size-1.5 rounded-full ${p.dot}`} />
+                  <span className="text-xs font-semibold">{p.label}</span>
+                  <span className="ml-auto font-mono text-[10px] text-ink-faint">{list.length}</span>
+                </div>
+                {list.length === 0 ? (
+                  <p className="rounded-md border border-dashed border-edge px-2 py-4 text-center text-[11px] text-ink-faint">
+                    None yet
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {list.map((c) => {
+                      const a = latestApp(apps, c);
+                      const st = a ? APP_STATUS[a.status] : null;
+                      const line = c.tagline?.trim() || (c.industries ?? []).join(" · ") || (isResearched(c) ? "" : "Not researched yet");
+                      return (
+                        <li key={c.id}>
+                          <button
+                            onClick={() => onOpen(c.id)}
+                            className="flex w-full items-start gap-2.5 rounded-md border border-edge bg-panel p-2.5 text-left transition-colors hover:border-accent-dim hover:bg-raised"
+                          >
+                            <span
+                              aria-hidden
+                              className="grid size-8 shrink-0 place-items-center rounded-md font-mono text-[10px] font-semibold text-mist"
+                              style={{ backgroundColor: monogramColour(c.name) }}
+                            >
+                              {monogram(c.name)}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[13px] font-medium">{c.name}</span>
+                              {line && <span className="line-clamp-2 text-[11px] leading-snug text-ink-muted">{line}</span>}
+                              {st && (
+                                <span className={`mt-1 flex items-center gap-1 text-[10px] font-medium ${st.text}`}>
+                                  <span className={`size-1 rounded-full ${st.dot}`} />
+                                  {st.label}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function OverviewStat({ value, of, label }: { value: number; of?: number; label: string }) {
+  return (
+    <div className="rounded-lg border border-edge bg-surface p-4">
+      <p className="font-mono text-2xl font-semibold tabular-nums">
+        {value}
+        {of !== undefined && <span className="text-base text-ink-faint">/{of}</span>}
+      </p>
+      <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-ink-faint">{label}</p>
+    </div>
+  );
+}
+
+const priorityLabel = (c: Company) =>
+  PRIORITIES.find((p) => p.value === (c.priority ?? "target"))?.label ?? "Target";
+
+/** "Tue 24 Nov" from a stored date or datetime, as a local date. */
+function formatDay(value: string) {
+  const [y, m, d] = value.slice(0, 10).split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]}`;
 }
 
 function DetailEmpty({
