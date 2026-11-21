@@ -3,11 +3,18 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { certificationRepo } from "@/lib/db";
+import { certificationRepo, courseRepo } from "@/lib/db";
 import type { Certification, CredentialType } from "@/lib/types";
 import { useIsOwner } from "@/lib/owner";
 import { daysUntil, parseLocalDate } from "@/lib/actions";
-import { pdfThumbnail, type PdfThumbnail } from "@/lib/pdf";
+import {
+  formatIssued,
+  issuedSortKey,
+  issuerKey,
+  monogram,
+  monogramColour,
+  shrinkLogo,
+} from "@/lib/credentials";
 import { formatDate } from "@/components/workspace/ShelfCard";
 import {
   QuickLook,
@@ -15,10 +22,11 @@ import {
 } from "@/components/workspace/QuickLook";
 
 /**
- * Certifications as a framed gallery (§7.18): each credential's own artwork on
- * a dark mat inside a thin paper frame, with title, issuer, date and type in
- * the same places underneath. Records without proof sit below as compact rows
- * with an Attach proof action. Proof opens in the Vault's Quick Look reader.
+ * Certifications as uniform credential cards (§7.19), LinkedIn-style: a type
+ * badge up front, the issuer's logo on the right, then title / issuer / date in
+ * fixed positions. Every card is the same shape whatever the certificate looks
+ * like; the certificate itself opens in Quick Look from the logo or
+ * "Show credential".
  */
 
 type Draft = {
@@ -30,6 +38,7 @@ type Draft = {
   expiresDate: string;
   credentialId: string;
   url: string;
+  issuerLogo?: Blob;
   file?: Blob;
   fileName?: string;
   fileType?: string;
@@ -83,6 +92,7 @@ const draftFromCert = (cert: Certification): Draft => ({
   expiresDate: cert.expiresDate ?? "",
   credentialId: cert.credentialId ?? "",
   url: cert.url ?? "",
+  issuerLogo: cert.issuerLogo,
   file: cert.file,
   fileName: cert.fileName,
   fileType: cert.fileType,
@@ -91,6 +101,18 @@ const draftFromCert = (cert: Certification): Draft => ({
 const isImage = (c: Pick<Certification, "fileType" | "fileName">) =>
   Boolean(c.fileType?.startsWith("image/")) ||
   /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(c.fileName ?? "");
+
+/** Only follow links that are actually web addresses. */
+const safeUrl = (raw?: string): string | null => {
+  const s = raw?.trim();
+  if (!s) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch {
+    return null;
+  }
+};
 
 /** Pick a file and attach it to an existing record. */
 function attachProof(cert: Certification) {
@@ -121,21 +143,40 @@ export default function CertificationsPage() {
 function Certifications() {
   const isOwner = useIsOwner();
   const certs = useLiveQuery(() => certificationRepo.list(), []);
+  const courses = useLiveQuery(() => courseRepo.list(), []);
   const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const viewingId = Number(searchParams.get("cert")) || null;
 
+  // Newest first by the date actually meant, not the string as typed;
+  // undated entries last.
   const sorted = useMemo(
     () =>
-      [...(certs ?? [])].sort((a, b) =>
-        (b.issuedDate ?? "").localeCompare(a.issuedDate ?? ""),
+      [...(certs ?? [])].sort(
+        (a, b) =>
+          issuedSortKey(b.issuedDate) - issuedSortKey(a.issuedDate) ||
+          a.title.localeCompare(b.title),
       ),
     [certs],
   );
-  const framed = sorted.filter((c) => c.file);
-  const awaiting = sorted.filter((c) => !c.file);
+  const withProof = sorted.filter((c) => c.file).length;
+
+  /**
+   * One logo per issuer: any credential's upload, else a course logo from the
+   * same provider. Add MathWorks once and every MathWorks credential shows it.
+   */
+  const sharedLogos = useMemo(() => {
+    const map = new Map<string, Blob>();
+    for (const c of courses ?? [])
+      if (c.logo && c.provider) map.set(issuerKey(c.provider), c.logo);
+    for (const c of certs ?? [])
+      if (c.issuerLogo && c.issuer) map.set(issuerKey(c.issuer), c.issuerLogo);
+    return map;
+  }, [certs, courses]);
+  const logoFor = (issuer: string, own?: Blob) =>
+    own ?? sharedLogos.get(issuerKey(issuer));
 
   const onPickFile = (file: File | undefined) => {
     if (file) setDraft(draftFromFile(file));
@@ -217,7 +258,7 @@ function Certifications() {
           </h2>
           <p className="mt-1 text-sm text-ink-muted">
             {sorted.length > 0
-              ? `${sorted.length} logged · ${framed.length} with proof attached`
+              ? `${sorted.length} logged · ${withProof} with proof attached`
               : "Upload and keep every certificate you earn in one place."}
           </p>
         </div>
@@ -237,50 +278,28 @@ function Certifications() {
           }
         />
       ) : (
-        <>
-          {/* ── The gallery ─────────────────────────────────────────── */}
-          {framed.length > 0 && (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {framed.map((cert) => (
-                <FramedCredential
-                  key={cert.id}
-                  cert={cert}
-                  openerRef={(el) => {
-                    openers.current[cert.id] = el;
-                  }}
-                  onView={() => openProof(cert.id)}
-                  onEdit={() => setDraft(draftFromCert(cert))}
-                  onDelete={() => confirmDelete(cert)}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* ── Records still waiting for their proof ──────────────── */}
-          {awaiting.length > 0 && (
-            <section className={framed.length > 0 ? "mt-8" : ""}>
-              <h3 className="mb-2 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-                Awaiting proof · {awaiting.length}
-              </h3>
-              <div className="divide-y divide-edge overflow-hidden rounded-md border border-edge bg-surface">
-                {awaiting.map((cert) => (
-                  <AwaitingRow
-                    key={cert.id}
-                    cert={cert}
-                    onAttach={() => attachProof(cert)}
-                    onEdit={() => setDraft(draftFromCert(cert))}
-                    onDelete={() => confirmDelete(cert)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-        </>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sorted.map((cert) => (
+            <CredentialCard
+              key={cert.id}
+              cert={cert}
+              logo={logoFor(cert.issuer, cert.issuerLogo)}
+              openerRef={(el) => {
+                openers.current[cert.id] = el;
+              }}
+              onView={() => openProof(cert.id)}
+              onAttach={() => attachProof(cert)}
+              onEdit={() => setDraft(draftFromCert(cert))}
+              onDelete={() => confirmDelete(cert)}
+            />
+          ))}
+        </div>
       )}
 
       {draft && (
         <EditModal
           draft={draft}
+          sharedLogo={draft.issuer ? sharedLogos.get(issuerKey(draft.issuer)) : undefined}
           onChange={setDraft}
           onClose={() => setDraft(null)}
           onSave={async () => {
@@ -292,6 +311,7 @@ function Certifications() {
               expiresDate: draft.expiresDate.trim() || undefined,
               credentialId: draft.credentialId.trim() || undefined,
               url: draft.url.trim() || undefined,
+              issuerLogo: draft.issuerLogo,
               file: draft.file,
               fileName: draft.fileName,
               fileType: draft.fileType,
@@ -314,7 +334,7 @@ function confirmDelete(cert: Certification) {
     void certificationRepo.remove(cert.id);
 }
 
-/* ── Gallery frame ──────────────────────────────────────────────────── */
+/* ── Credential card ────────────────────────────────────────────────── */
 
 /** "Expires 12 Mar 2027", or "Expired …" once it's past. */
 function ExpiryLabel({ value }: { value: string }) {
@@ -329,165 +349,170 @@ function ExpiryLabel({ value }: { value: string }) {
   );
 }
 
-/** Page one of a PDF proof, for the frame. */
-function usePdfArtwork(blob: Blob | undefined, enabled: boolean) {
-  const [thumb, setThumb] = useState<PdfThumbnail | "error" | null>(null);
-  useEffect(() => {
-    if (!blob || !enabled) return;
-    let cancelled = false;
-    setThumb(null);
-    pdfThumbnail(blob, 360)
-      .then((t) => !cancelled && setThumb(t))
-      .catch(() => !cancelled && setThumb("error"));
-    return () => {
-      cancelled = true;
-    };
-  }, [blob, enabled]);
-  return thumb;
-}
-
-function FramedCredential({
+function CredentialCard({
   cert,
+  logo,
   openerRef,
   onView,
-  onEdit,
-  onDelete,
-}: {
-  cert: Certification;
-  openerRef: (el: HTMLButtonElement | null) => void;
-  /** Opens the proof in Quick Look — wired to the framed artwork. */
-  onView: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const image = isImage(cert);
-  const imageUrl = useObjectUrl(image ? cert.file : undefined);
-  const pdf = usePdfArtwork(cert.file, !image);
-  const src = image ? imageUrl : pdf && pdf !== "error" ? pdf.src : null;
-  const type = typeOf(cert);
-
-  return (
-    <article className="group flex flex-col">
-      {/* The mat, with the artwork framed and fitted whole */}
-      <button
-        ref={openerRef}
-        onClick={onView}
-        aria-label={`View proof: ${cert.title}`}
-        className="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-[#0f1412] ring-1 ring-edge transition-colors hover:ring-edge-strong"
-      >
-        <span className="absolute inset-[9%] flex items-center justify-center">
-          {src ? (
-            // eslint-disable-next-line @next/next/no-img-element -- a local Blob/data URL
-            <img
-              src={src}
-              alt=""
-              className="max-h-full max-w-full bg-white shadow-[0_18px_36px_-14px_rgba(0,0,0,0.95)] ring-[3px] ring-paper transition-transform duration-300 group-hover:-translate-y-0.5"
-            />
-          ) : pdf === "error" ? (
-            <span className="grid aspect-[1.414/1] w-full place-items-center bg-paper font-mono text-[10px] text-paper-ink/60 ring-[3px] ring-paper">
-              Preview unavailable — open to download
-            </span>
-          ) : (
-            <span className="aspect-[1.414/1] w-full animate-pulse-soft bg-paper/80 ring-[3px] ring-paper" />
-          )}
-        </span>
-      </button>
-
-      {/* Details, always in the same places */}
-      <div className="mt-3 flex flex-1 flex-col px-0.5">
-        <p className="flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-          <span>{TYPE_LABEL[type]}</span>
-          {cert.expiresDate && (
-            <span className="normal-case tracking-normal">
-              · <ExpiryLabel value={cert.expiresDate} />
-            </span>
-          )}
-        </p>
-        <h3 className="mt-1 text-sm leading-snug font-semibold break-words">
-          {cert.title}
-        </h3>
-        <p className="mt-0.5 text-xs text-accent">{cert.issuer || "Issuer not recorded"}</p>
-        <p className="mt-1 font-mono text-[10px] text-ink-faint">
-          {cert.issuedDate ? `Issued ${cert.issuedDate}` : "Undated"}
-        </p>
-        {/* Finishing a course isn't the same as holding a verified credential. */}
-        {cert.fromCourseId !== undefined && (
-          <p className="mt-1.5 inline-flex w-fit rounded-xs border border-edge bg-raised px-1.5 py-0.5 text-[10px] text-ink-muted">
-            Logged from a completed course
-          </p>
-        )}
-        {/* The framed artwork is the "view proof" control. */}
-        <div className="mt-2 -ml-2 flex flex-wrap items-center gap-1">
-          <TextButton onClick={() => downloadCert(cert)}>Download</TextButton>
-          <TextButton onClick={onEdit}>Edit</TextButton>
-          <TextButton onClick={onDelete} danger>
-            Delete
-          </TextButton>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/* ── Awaiting-proof row ─────────────────────────────────────────────── */
-
-const initials = (title: string) =>
-  title
-    .split(/\s+/)
-    .filter((w) => /^[A-Za-z0-9]/.test(w))
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join("") || "?";
-
-function AwaitingRow({
-  cert,
   onAttach,
   onEdit,
   onDelete,
 }: {
   cert: Certification;
+  /** The issuer's logo — this credential's own, or one shared by issuer. */
+  logo?: Blob;
+  openerRef: (el: HTMLButtonElement | null) => void;
+  onView: () => void;
   onAttach: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const hasProof = Boolean(cert.file);
+  const issued = formatIssued(cert.issuedDate);
+  const verify = safeUrl(cert.url);
+
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <span
-        aria-hidden
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-panel font-mono text-[11px] font-semibold text-ink-muted ring-1 ring-edge-strong"
-      >
-        {initials(cert.title)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm leading-snug font-medium break-words">{cert.title}</p>
-        <p className="mt-0.5 font-mono text-[10px] text-ink-faint">
-          <span className="text-accent">{cert.issuer || "Issuer not recorded"}</span>
-          {" · "}
-          {cert.issuedDate || "Undated"}
-          {" · "}
-          {TYPE_LABEL[typeOf(cert)]}
-          {cert.expiresDate && (
-            <>
-              {" · "}
-              <ExpiryLabel value={cert.expiresDate} />
-            </>
+    <article className="flex flex-col rounded-lg border border-edge bg-panel p-4 transition duration-200 hover:-translate-y-0.5 hover:border-edge-strong hover:shadow-[0_14px_32px_-18px_rgba(0,0,0,0.9)]">
+      {/* Badge up front, issuer logo on the right */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <span className="rounded-sm border border-accent-dim px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-accent">
+            {TYPE_LABEL[typeOf(cert)]}
+          </span>
+          {!hasProof && (
+            <span className="rounded-sm border border-edge-strong px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+              No proof yet
+            </span>
           )}
-          {cert.fromCourseId !== undefined && " · from a completed course"}
-        </p>
+        </div>
+        <IssuerTile
+          issuer={cert.issuer}
+          logo={logo}
+          hasProof={hasProof}
+          label={
+            hasProof
+              ? `Preview certificate: ${cert.title}`
+              : `Attach proof for ${cert.title}`
+          }
+          buttonRef={openerRef}
+          onClick={hasProof ? onView : onAttach}
+        />
       </div>
-      <div className="flex items-center gap-1 max-sm:w-full max-sm:pl-12">
-        <button
-          onClick={onAttach}
-          className="min-h-9 rounded-sm bg-accent-dim px-3 text-xs font-semibold whitespace-nowrap text-accent-strong transition-colors hover:bg-accent hover:text-bg"
-        >
-          Attach proof
-        </button>
+
+      {/* Details in fixed positions; two-line title slot keeps cards level */}
+      <h3
+        className="mt-3 line-clamp-2 min-h-[2.6em] text-[15px] leading-[1.3] font-semibold break-words"
+        title={cert.title}
+      >
+        {cert.title}
+      </h3>
+      <p className="mt-1 truncate text-xs text-accent" title={cert.issuer}>
+        {cert.issuer || "Issuer not recorded"}
+      </p>
+      <p className="mt-1 font-mono text-[10px] text-ink-faint">
+        {issued ? `Issued ${issued}` : "Undated"}
+        {cert.expiresDate && (
+          <>
+            {" · "}
+            <ExpiryLabel value={cert.expiresDate} />
+          </>
+        )}
+      </p>
+      {cert.fromCourseId !== undefined && (
+        <p className="mt-1 font-mono text-[10px] text-ink-faint">
+          Logged from a completed course
+        </p>
+      )}
+
+      {/* Actions, pinned to the bottom so every card in a row lines up */}
+      <div className="mt-auto pt-4">
+      <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-edge pt-3">
+        {hasProof ? (
+          <button
+            onClick={onView}
+            className="min-h-9 rounded-full border border-edge-strong px-3.5 text-xs font-semibold text-ink transition-colors hover:border-accent hover:text-accent-strong"
+          >
+            Show credential
+          </button>
+        ) : (
+          <button
+            onClick={onAttach}
+            className="min-h-9 rounded-full bg-accent-dim px-3.5 text-xs font-semibold whitespace-nowrap text-accent-strong transition-colors hover:bg-accent hover:text-bg"
+          >
+            Attach proof
+          </button>
+        )}
+        {verify && (
+          <a
+            href={verify}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open the issuer's verification page"
+            className="flex min-h-9 items-center rounded-sm px-2 font-mono text-[11px] text-ink-muted transition-colors hover:text-ink"
+          >
+            Verify ↗
+          </a>
+        )}
+      </div>
+      {/* Housekeeping on its own row, the same on every card */}
+      <div className="-mr-2 mt-1 flex items-center justify-end">
+        {hasProof && (
+          <TextButton onClick={() => downloadCert(cert)}>Download</TextButton>
+        )}
         <TextButton onClick={onEdit}>Edit</TextButton>
         <TextButton onClick={onDelete} danger>
           Delete
         </TextButton>
       </div>
-    </div>
+      </div>
+    </article>
+  );
+}
+
+/**
+ * The issuer's square: their logo on a light tile (logos are drawn for white
+ * backgrounds), or a coloured monogram until one is added. It's a button —
+ * hover shows what clicking does.
+ */
+function IssuerTile({
+  issuer,
+  logo,
+  hasProof,
+  label,
+  buttonRef,
+  onClick,
+}: {
+  issuer: string;
+  logo?: Blob;
+  hasProof: boolean;
+  label: string;
+  buttonRef: (el: HTMLButtonElement | null) => void;
+  onClick: () => void;
+}) {
+  const url = useObjectUrl(logo);
+  return (
+    <button
+      ref={buttonRef}
+      onClick={onClick}
+      aria-label={label}
+      title={hasProof ? "Preview certificate" : "Attach proof"}
+      className="group/tile relative grid size-14 shrink-0 place-items-center overflow-hidden rounded-md ring-1 ring-edge-strong transition hover:ring-accent"
+      style={url ? undefined : { backgroundColor: monogramColour(issuer) }}
+    >
+      {url ? (
+        <span className="absolute inset-0 grid place-items-center bg-paper p-1.5">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a local Blob URL */}
+          <img src={url} alt="" className="max-h-full max-w-full object-contain" />
+        </span>
+      ) : (
+        <span className="font-mono text-sm font-semibold tracking-wide text-mist">
+          {monogram(issuer)}
+        </span>
+      )}
+      <span className="absolute inset-0 grid place-items-center bg-bg/75 text-accent-strong opacity-0 transition-opacity group-hover/tile:opacity-100 group-focus-visible/tile:opacity-100">
+        {hasProof ? <EyeIcon /> : <PaperclipIcon />}
+      </span>
+    </button>
   );
 }
 
@@ -495,16 +520,22 @@ function AwaitingRow({
 
 function EditModal({
   draft,
+  sharedLogo,
   onChange,
   onClose,
   onSave,
 }: {
   draft: Draft;
+  /** A logo another credential/course from this issuer already has. */
+  sharedLogo?: Blob;
   onChange: (d: Draft) => void;
   onClose: () => void;
   onSave: () => void;
 }) {
   const set = (p: Partial<Draft>) => onChange({ ...draft, ...p });
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const shownLogo = draft.issuerLogo ?? sharedLogo;
+  const logoUrl = useObjectUrl(shownLogo);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -538,6 +569,67 @@ function EditModal({
             onChange={(issuer) => set({ issuer })}
             placeholder="e.g. MathWorks"
           />
+
+          {/* Issuer logo */}
+          <div className="flex items-center gap-3 rounded-sm border border-edge bg-panel px-3 py-2">
+            <span
+              className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-sm ring-1 ring-edge-strong"
+              style={logoUrl ? undefined : { backgroundColor: monogramColour(draft.issuer) }}
+            >
+              {logoUrl ? (
+                <span className="grid size-full place-items-center bg-paper p-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- a local Blob URL */}
+                  <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
+                </span>
+              ) : (
+                <span className="font-mono text-[11px] font-semibold text-mist">
+                  {monogram(draft.issuer)}
+                </span>
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+                Issuer logo
+              </p>
+              <p className="truncate text-[11px] text-ink-muted">
+                {logoError
+                  ? <span className="text-danger">{logoError}</span>
+                  : draft.issuerLogo
+                    ? "Shown on every credential from this issuer"
+                    : sharedLogo
+                      ? "Using the logo already saved for this issuer"
+                      : "Optional — square logos work best"}
+              </p>
+            </div>
+            <label className="shrink-0 cursor-pointer font-mono text-[10px] uppercase tracking-widest text-accent hover:text-accent-strong">
+              {draft.issuerLogo ? "Replace" : "Upload"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  try {
+                    setLogoError(null);
+                    set({ issuerLogo: await shrinkLogo(file) });
+                  } catch (err) {
+                    setLogoError(err instanceof Error ? err.message : "That image couldn't be used.");
+                  }
+                }}
+              />
+            </label>
+            {draft.issuerLogo && (
+              <button
+                onClick={() => set({ issuerLogo: undefined })}
+                className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-ink-faint hover:text-danger"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-2.5">
             <label className="block">
               <span className="mb-1 block font-mono text-[10px] uppercase tracking-widest text-ink-faint">
@@ -561,7 +653,7 @@ function EditModal({
               label="Date earned"
               value={draft.issuedDate}
               onChange={(issuedDate) => set({ issuedDate })}
-              placeholder="2025"
+              placeholder="e.g. 2025-11-12"
             />
           </div>
           <div className="grid grid-cols-2 gap-2.5">
@@ -583,7 +675,7 @@ function EditModal({
             label="Verification URL"
             value={draft.url}
             onChange={(url) => set({ url })}
-            placeholder="optional"
+            placeholder="optional — shows a Verify link"
           />
 
           <div className="flex items-center gap-2 rounded-sm border border-edge bg-panel px-3 py-2 text-xs">
@@ -732,7 +824,7 @@ function TextButton({
   return (
     <button
       onClick={onClick}
-      className={`min-h-9 rounded-sm px-2 font-mono text-[11px] text-ink-muted transition-colors hover:bg-panel ${
+      className={`min-h-9 rounded-sm px-2 font-mono text-[11px] text-ink-muted transition-colors hover:bg-raised ${
         danger ? "hover:text-danger" : "hover:text-ink"
       }`}
     >
@@ -788,5 +880,18 @@ const CertIcon = () => (
   <svg viewBox="0 0 24 24" className="size-6 fill-none stroke-current stroke-[1.5]">
     <circle cx="12" cy="9" r="5" />
     <path d="M9 13.5L8 21l4-2 4 2-1-7.5" strokeLinejoin="round" />
+  </svg>
+);
+
+const EyeIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden className="size-5 fill-none stroke-current stroke-[1.7]">
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" strokeLinejoin="round" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const PaperclipIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden className="size-5 fill-none stroke-current stroke-[1.7]">
+    <path d="M21 11l-8.5 8.5a5 5 0 01-7-7L14 4a3.5 3.5 0 015 5l-8.5 8.5a2 2 0 01-3-3L15 6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );

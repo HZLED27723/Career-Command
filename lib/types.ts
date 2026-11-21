@@ -211,6 +211,11 @@ export interface Certification {
   credentialType?: CredentialType;
   /** ISO date a licence (or anything time-limited) stops being valid. */
   expiresDate?: string;
+  /**
+   * The issuer's logo, downscaled on upload (see lib/credentials.ts). Shared
+   * by display: every credential from the same issuer shows it.
+   */
+  issuerLogo?: Blob;
   credentialId?: string;
   /** Verification / credential URL. */
   url?: string;
