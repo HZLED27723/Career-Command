@@ -373,17 +373,28 @@ function CredentialCard({
 
   return (
     <article className="flex flex-col rounded-lg border border-edge bg-panel p-4 transition duration-200 hover:-translate-y-0.5 hover:border-edge-strong hover:shadow-[0_14px_32px_-18px_rgba(0,0,0,0.9)]">
-      {/* Badge up front, issuer logo on the right */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <span className="rounded-sm border border-accent-dim px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-accent">
-            {TYPE_LABEL[typeOf(cert)]}
-          </span>
-          {!hasProof && (
-            <span className="rounded-sm border border-edge-strong px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-              No proof yet
+      {/* Badge and title on the left, a larger issuer logo beside both — so
+          the logo fills the header instead of leaving a gap under it, and a
+          long title wraps (two lines at most) beside it rather than running
+          the full width. */}
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <span className="rounded-sm border border-accent-dim px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-accent">
+              {TYPE_LABEL[typeOf(cert)]}
             </span>
-          )}
+            {!hasProof && (
+              <span className="rounded-sm border border-edge-strong px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+                No proof yet
+              </span>
+            )}
+          </div>
+          <h3
+            className="mt-2.5 line-clamp-2 text-[15px] leading-[1.3] font-semibold text-balance break-words"
+            title={cert.title}
+          >
+            {cert.title}
+          </h3>
         </div>
         <IssuerTile
           issuer={cert.issuer}
@@ -399,14 +410,9 @@ function CredentialCard({
         />
       </div>
 
-      {/* Details in fixed positions; two-line title slot keeps cards level */}
-      <h3
-        className="mt-3 line-clamp-2 min-h-[2.6em] text-[15px] leading-[1.3] font-semibold break-words"
-        title={cert.title}
-      >
-        {cert.title}
-      </h3>
-      <p className="mt-1 truncate text-xs text-accent" title={cert.issuer}>
+      {/* The header is always the logo's height (a two-line title fits beside
+          it), so issuer and date sit at the same height on every card. */}
+      <p className="mt-3 truncate text-xs text-accent" title={cert.issuer}>
         {cert.issuer || "Issuer not recorded"}
       </p>
       <p className="mt-1 font-mono text-[10px] text-ink-faint">
@@ -496,7 +502,7 @@ function IssuerTile({
       onClick={onClick}
       aria-label={label}
       title={hasProof ? "Preview certificate" : "Attach proof"}
-      className="group/tile relative grid size-14 shrink-0 place-items-center overflow-hidden rounded-md ring-1 ring-edge-strong transition hover:ring-accent"
+      className="group/tile relative grid size-[4.5rem] shrink-0 place-items-center overflow-hidden rounded-md ring-1 ring-edge-strong transition hover:ring-accent"
       style={url ? undefined : { backgroundColor: monogramColour(issuer) }}
     >
       {url ? (
@@ -505,7 +511,7 @@ function IssuerTile({
         // eslint-disable-next-line @next/next/no-img-element -- a local Blob URL
         <img src={url} alt="" className="absolute inset-0 size-full bg-paper object-cover" />
       ) : (
-        <span className="font-mono text-sm font-semibold tracking-wide text-mist">
+        <span className="font-mono text-base font-semibold tracking-wide text-mist">
           {monogram(issuer)}
         </span>
       )}
