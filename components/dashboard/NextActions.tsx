@@ -21,9 +21,12 @@ const KIND_META: Record<ActionKind, { label: string; dot: string }> = {
 export function NextActions({
   actions,
   hasAnyRecords,
+  waiting = 0,
 }: {
   actions: NextAction[];
   hasAnyRecords: boolean;
+  /** Applications sent and not yet answered — named in the empty state. */
+  waiting?: number;
 }) {
   // Anything more than a fortnight out isn't "next" — it's just a date.
   const soon = actions.filter((a) => a.daysAway <= 14);
@@ -49,8 +52,9 @@ export function NextActions({
         <p className="mt-1 max-w-md text-xs leading-relaxed text-ink-muted">
           {hasAnyRecords ? (
             <>
-              Add a deadline or a follow-up date to an application and it will
-              show up here.{" "}
+              {waiting > 0
+                ? `${waiting} application${waiting === 1 ? " is" : "s are"} waiting to hear back. Add a follow-up date and ${waiting === 1 ? "it" : "they"}'ll show up here.`
+                : "Add a deadline or a follow-up date to an application and it will show up here."}{" "}
               <Link
                 href="/tracker"
                 className="font-medium text-accent hover:text-accent-strong"

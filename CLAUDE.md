@@ -296,3 +296,10 @@ The framed gallery looked uneven because every certificate is a different shape,
 * `lg` and up: list left (4fr) / selected story right (8fr, sticky), like Interview. Each row shows a four-segment STAR bar + "n/4 detailed"; the first visible example is selected by default. Below `lg` it is the original accordion.
 * The editor keeps the original 2×2 STAR boxes, Skill tags, Evidence and Delete. New: a header with word count and spoken length (~150 wpm), and **Read it back** — the written parts joined into one paragraph, with what's missing, a warning past ~300 words (two minutes), and Copy. Nothing is generated; it only joins the user's own text.
 * STAR text is held locally so Read it back updates live; each box still saves on blur, and unsaved text is flushed on unmount. No schema change.
+
+### 7.25 Dashboard tweaks (2026-11-22 — owner kept the original layout; small fixes only)
+
+* Tile numbers match the sidebar (04 Interview … 09 Portfolio) and a **05 · Examples** tile (stories written / fully detailed) sits between Interview and Certifications. Portfolio is an ordinary faded tile closing the last row instead of a full-width strip, so the grid has no holes at 3 columns or 2.
+* The Applications bar has a caption ("17 open · 1 offer · 28 rejected"; open = draft + applied + interview). "Interviews" is now "Interviews scheduled" — it counts the current interview status only, which read as a mistake beside "1 offer".
+* `NextActions` takes `waiting` (applications at "applied"); its empty state names how many are waiting and asks for a follow-up date. Still nothing invented — only dated items are listed.
+* Page width `max-w-6xl` (was `5xl`). Clock, Vault tile and the rest are unchanged.

@@ -10,6 +10,7 @@ import {
   companyRepo,
   skillRepo,
   courseRepo,
+  achievementRepo,
   countStoredDocuments,
 } from "@/lib/db";
 import { GettingStarted } from "@/components/onboarding/GettingStarted";
@@ -34,6 +35,7 @@ export default function DashboardPage() {
   const companies = useLiveQuery(() => companyRepo.list(), []);
   const skills = useLiveQuery(() => skillRepo.list(), []);
   const courses = useLiveQuery(() => courseRepo.list(), []);
+  const examples = useLiveQuery(() => achievementRepo.list(), []);
   const storedDocs = useLiveQuery(() => countStoredDocuments(), []);
   const mounted = useMounted();
   const hydrated = useHydrated();
@@ -46,6 +48,11 @@ export default function DashboardPage() {
     courses?.filter((c) => c.status !== "completed").length ?? 0;
   const coursesDone =
     courses?.filter((c) => c.status === "completed").length ?? 0;
+  const exampleCount = examples?.length ?? 0;
+  const examplesDetailed =
+    examples?.filter((e) =>
+      [e.situation, e.task, e.action, e.result].every((v) => v?.trim()),
+    ).length ?? 0;
 
   const total = apps?.length ?? 0;
   const byStatus = Object.fromEntries(
@@ -57,6 +64,15 @@ export default function DashboardPage() {
   const interviews = byStatus["interview-scheduled"];
   const offers = byStatus["offer-extended"];
   const active = byStatus["applied"] + interviews;
+  const open = byStatus["draft"] + active;
+  // Words under the Applications bar, so its colours mean something.
+  const pipelineCaption = [
+    open > 0 && `${open} open`,
+    offers > 0 && `${offers} offer${offers > 1 ? "s" : ""}`,
+    byStatus["rejected"] > 0 && `${byStatus["rejected"]} rejected`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const questionCount = questions?.length ?? 0;
   const answered = questions?.filter(isDrafted).length ?? 0;
 
@@ -94,7 +110,7 @@ export default function DashboardPage() {
         className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[42rem] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-accent)_9%,transparent),transparent)]"
       />
 
-      <div className="relative mx-auto max-w-5xl p-6">
+      <div className="relative mx-auto max-w-6xl p-6">
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
@@ -119,7 +135,11 @@ export default function DashboardPage() {
           hasApplication={total > 0}
         />
 
-        <NextActions actions={actions} hasAnyRecords={total > 0} />
+        <NextActions
+          actions={actions}
+          hasAnyRecords={total > 0}
+          waiting={byStatus["applied"]}
+        />
 
         {/* ── Bento grid ──────────────────────────────────────────── */}
         <div className="grid grid-cols-6 gap-3 max-md:grid-cols-2">
@@ -192,6 +212,11 @@ export default function DashboardPage() {
                   ),
                 )}
               </div>
+              {pipelineCaption && (
+                <p className="mt-2 truncate text-[11px] text-ink-muted">
+                  {pipelineCaption}
+                </p>
+              )}
             </div>
           </Tile>
 
@@ -202,7 +227,7 @@ export default function DashboardPage() {
                 {interviews > 0 && (
                   <span className="size-1.5 animate-pulse-soft rounded-full bg-warn" />
                 )}
-                Interviews
+                Interviews scheduled
               </p>
               <p className="mt-2 font-mono text-4xl font-semibold tabular-nums text-accent-strong">
                 {interviews}
@@ -261,7 +286,7 @@ export default function DashboardPage() {
           {/* Question bank progress */}
           <Tile href="/interview" className="col-span-2 max-md:col-span-1">
             <div className="p-5">
-              <p className="font-mono text-xs text-accent">04 · Question Bank</p>
+              <p className="font-mono text-xs text-accent">04 · Interview</p>
               <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">
                 {answered}
                 <span className="text-ink-faint">/{questionCount}</span>
@@ -282,6 +307,24 @@ export default function DashboardPage() {
             </div>
           </Tile>
 
+          {/* Examples — the evidence bank */}
+          <Tile href="/examples" className="col-span-2 max-md:col-span-1">
+            <div className="p-5">
+              <p className="font-mono text-xs text-accent">05 · Examples</p>
+              <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">
+                {exampleCount}
+              </p>
+              <p className="mt-0.5 text-[11px] text-ink-muted">
+                {exampleCount === 1 ? "story written" : "stories written"}
+              </p>
+              <p className="mt-2 truncate text-[11px] text-ink-faint">
+                {exampleCount > 0
+                  ? `${examplesDetailed} fully detailed →`
+                  : "Write up your first story →"}
+              </p>
+            </div>
+          </Tile>
+
           {/* Certifications vault */}
           <Tile
             href="/certifications"
@@ -289,7 +332,7 @@ export default function DashboardPage() {
           >
             <div className="p-5">
               <p className="font-mono text-xs text-accent">
-                05 · Certifications
+                06 · Certifications
               </p>
               <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">
                 {certCount}
@@ -303,7 +346,7 @@ export default function DashboardPage() {
           {/* Skills — toolkit + growth pipeline */}
           <Tile href="/skills" className="col-span-2 max-md:col-span-1">
             <div className="p-5">
-              <p className="font-mono text-xs text-accent">06 · Skills</p>
+              <p className="font-mono text-xs text-accent">07 · Skills</p>
               <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">
                 {skillsHave}
               </p>
@@ -321,7 +364,7 @@ export default function DashboardPage() {
           {/* Courses — the learning queue */}
           <Tile href="/courses" className="col-span-2 max-md:col-span-1">
             <div className="p-5">
-              <p className="font-mono text-xs text-accent">07 · Courses</p>
+              <p className="font-mono text-xs text-accent">08 · Courses</p>
               <p className="mt-3 font-mono text-2xl font-semibold tabular-nums">
                 {coursesQueued}
               </p>
@@ -336,18 +379,15 @@ export default function DashboardPage() {
             </div>
           </Tile>
 
-          {/* Portfolio — locked strip */}
-          <Tile className="col-span-6 max-md:col-span-2">
-            <div className="flex h-full items-center justify-between gap-4 p-5 opacity-60">
-              <div>
-                <p className="font-mono text-xs text-ink-faint">
-                  08 · Portfolio
-                </p>
-                <p className="mt-1 text-sm font-semibold text-ink-muted">
-                  Public portfolio aggregator
-                </p>
-              </div>
-              <p className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+          {/* Portfolio — locked; a normal tile now, so it closes the last row
+              instead of taking a full-width strip of its own. */}
+          <Tile className="col-span-2 max-md:col-span-1">
+            <div className="flex h-full flex-col p-5 opacity-60">
+              <p className="font-mono text-xs text-ink-faint">09 · Portfolio</p>
+              <p className="mt-3 text-sm font-semibold text-ink-muted">
+                Public portfolio
+              </p>
+              <p className="mt-auto pt-2 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
                 🔒 future phase
               </p>
             </div>
