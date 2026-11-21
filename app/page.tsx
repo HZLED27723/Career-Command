@@ -15,6 +15,7 @@ import {
 } from "@/lib/db";
 import { GettingStarted } from "@/components/onboarding/GettingStarted";
 import { NextActions } from "@/components/dashboard/NextActions";
+import { VaultCovers } from "@/components/dashboard/VaultCovers";
 import { collectActions } from "@/lib/actions";
 import { isDrafted } from "@/lib/interview";
 import type { ApplicationStatus } from "@/lib/types";
@@ -150,18 +151,8 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              {/* Fanned mini resumes */}
-              <div className="relative my-4 h-28 shrink-0">
-                <MiniPaper
-                  className="left-[16%] -rotate-3 transition-transform duration-300 group-hover:-translate-y-2 group-hover:-rotate-6"
-                  title="Technical Résumé"
-                  serif
-                />
-                <MiniPaper
-                  className="right-[16%] rotate-2 transition-transform duration-300 group-hover:-translate-y-2 group-hover:rotate-5"
-                  title="Retail Résumé"
-                />
-              </div>
+              {/* Page one of each stored document, fanned */}
+              <VaultCovers />
 
               <h3 className="mt-auto text-base font-semibold">
                 Document Vault
@@ -425,44 +416,6 @@ function Tile({
       ) : (
         inner
       )}
-    </div>
-  );
-}
-
-function MiniPaper({
-  className,
-  title,
-  serif,
-}: {
-  className: string;
-  title: string;
-  serif?: boolean;
-}) {
-  return (
-    <div
-      className={`absolute top-1/2 aspect-[1/1.414] w-[88px] -translate-y-1/2 rounded-xs bg-paper p-2 text-paper-ink shadow-[0_12px_28px_-10px_rgba(0,0,0,0.85)] ring-1 ring-black/30 ${className}`}
-    >
-      <p
-        className={`text-center text-[7px] font-semibold ${serif ? "font-serif" : ""}`}
-      >
-        {title}
-      </p>
-      <div
-        className={`mx-auto mt-1 h-px w-3/4 ${serif ? "bg-paper-ink" : "bg-accent"}`}
-      />
-      <div className="mt-2 space-y-1 opacity-25">
-        {[3 / 4, 1, 5 / 6, 0, 1 / 2, 1, 2 / 3].map((w, i) =>
-          w === 0 ? (
-            <div key={i} className="h-1" />
-          ) : (
-            <div
-              key={i}
-              className="h-0.5 bg-paper-ink"
-              style={{ width: `${w * 100}%` }}
-            />
-          ),
-        )}
-      </div>
     </div>
   );
 }
