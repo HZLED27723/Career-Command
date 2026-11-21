@@ -301,5 +301,5 @@ The framed gallery looked uneven because every certificate is a different shape,
 
 * Tile numbers match the sidebar (04 Interview … 09 Portfolio) and a **05 · Examples** tile (stories written / fully detailed) sits between Interview and Certifications. Portfolio is an ordinary faded tile closing the last row instead of a full-width strip, so the grid has no holes at 3 columns or 2.
 * The Applications bar has a caption ("17 open · 1 offer · 28 rejected"; open = draft + applied + interview). "Interviews" is now "Interviews scheduled" — it counts the current interview status only, which read as a mistake beside "1 offer".
-* `NextActions` takes `waiting` (applications at "applied"); its empty state names how many are waiting and asks for a follow-up date. Still nothing invented — only dated items are listed.
+* **"What needs doing" is hidden when nothing is due in the next two weeks** (owner asked to remove the empty box). It reappears as soon as a dated deadline / interview / follow-up / course target falls inside the window; an account with no applications still gets the "Add an application" nudge. Only dated items are ever listed.
 * Page width `max-w-6xl` (was `5xl`). Clock, Vault tile and the rest are unchanged.

@@ -135,11 +135,7 @@ export default function DashboardPage() {
           hasApplication={total > 0}
         />
 
-        <NextActions
-          actions={actions}
-          hasAnyRecords={total > 0}
-          waiting={byStatus["applied"]}
-        />
+        <NextActions actions={actions} hasAnyRecords={total > 0} />
 
         {/* ── Bento grid ──────────────────────────────────────────── */}
         <div className="grid grid-cols-6 gap-3 max-md:grid-cols-2">

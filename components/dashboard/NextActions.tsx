@@ -21,16 +21,17 @@ const KIND_META: Record<ActionKind, { label: string; dot: string }> = {
 export function NextActions({
   actions,
   hasAnyRecords,
-  waiting = 0,
 }: {
   actions: NextAction[];
   hasAnyRecords: boolean;
-  /** Applications sent and not yet answered — named in the empty state. */
-  waiting?: number;
 }) {
   // Anything more than a fortnight out isn't "next" — it's just a date.
   const soon = actions.filter((a) => a.daysAway <= 14);
   const later = actions.length - soon.length;
+
+  // Nothing due: say nothing (owner's call — an empty box at the top of the
+  // dashboard was noise). It reappears as soon as something falls due.
+  if (soon.length === 0 && hasAnyRecords) return null;
 
   if (soon.length === 0) {
     return (
@@ -44,42 +45,17 @@ export function NextActions({
         >
           What needs doing
         </h3>
-        <p className="mt-2 text-sm text-ink">
-          {hasAnyRecords
-            ? "Nothing due in the next two weeks."
-            : "Nothing tracked yet."}
-        </p>
+        <p className="mt-2 text-sm text-ink">Nothing tracked yet.</p>
         <p className="mt-1 max-w-md text-xs leading-relaxed text-ink-muted">
-          {hasAnyRecords ? (
-            <>
-              {waiting > 0
-                ? `${waiting} application${waiting === 1 ? " is" : "s are"} waiting to hear back. Add a follow-up date and ${waiting === 1 ? "it" : "they"}'ll show up here.`
-                : "Add a deadline or a follow-up date to an application and it will show up here."}{" "}
-              <Link
-                href="/tracker"
-                className="font-medium text-accent hover:text-accent-strong"
-              >
-                Open the tracker →
-              </Link>
-            </>
-          ) : (
-            <>
-              Save one role you&apos;re considering — that&apos;s enough for
-              this to start telling you what&apos;s next.{" "}
-              <Link
-                href="/tracker"
-                className="font-medium text-accent hover:text-accent-strong"
-              >
-                Add an application →
-              </Link>
-            </>
-          )}
+          Save one role you&apos;re considering — that&apos;s enough for this
+          to start telling you what&apos;s next.{" "}
+          <Link
+            href="/tracker"
+            className="font-medium text-accent hover:text-accent-strong"
+          >
+            Add an application →
+          </Link>
         </p>
-        {later > 0 && (
-          <p className="mt-2 text-[11px] text-ink-faint">
-            {later} further out.
-          </p>
-        )}
       </section>
     );
   }
