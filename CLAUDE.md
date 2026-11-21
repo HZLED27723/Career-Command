@@ -289,3 +289,10 @@ The framed gallery looked uneven because every certificate is a different shape,
 * Course icons: own logo → issuer logo shared with Certifications (`issuerKey`) → favicon → two-letter monogram on `monogramColour`. Logos and favicons fill the tile edge to edge (`object-cover`, no paper padding — owner's call; wide wordmarks get cropped at the sides). Uploads go through `shrinkLogo`. Delete confirms when notes, link, logo or skill links would be lost.
 * Phones: the title takes the first line; date and actions wrap below.
 * Three redesigns were mocked (focus card, lanes, timeline) and declined for now — A and B would need a new per-course progress field.
+
+### 7.24 Examples = story board (2026-11-22 — owner-directed: keep the original boxes, lose the side gutters)
+
+* `app/examples/page.tsx` is full width (`max-w-[1600px]`, was `max-w-4xl`) with three stat tiles beside the heading (examples / fully detailed / skills). Add bar and tag filter unchanged.
+* `lg` and up: list left (4fr) / selected story right (8fr, sticky), like Interview. Each row shows a four-segment STAR bar + "n/4 detailed"; the first visible example is selected by default. Below `lg` it is the original accordion.
+* The editor keeps the original 2×2 STAR boxes, Skill tags, Evidence and Delete. New: a header with word count and spoken length (~150 wpm), and **Read it back** — the written parts joined into one paragraph, with what's missing, a warning past ~300 words (two minutes), and Copy. Nothing is generated; it only joins the user's own text.
+* STAR text is held locally so Read it back updates live; each box still saves on blur, and unsaved text is flushed on unmount. No schema change.
