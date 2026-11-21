@@ -1,35 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
-import { LogoTile, Wordmark } from "@/components/brand/Logo";
+import { BRAND, Lockup } from "@/components/brand/Logo";
 
 type Mode = "signin" | "signup" | "forgot";
 
 /**
- * The public face of the app: what it does, then the way in.
- *
- * Everything described here is a feature that actually exists — the preview
- * below is the real tracker layout filled with obviously fictional rows, not a
- * mock-up of something unbuilt and not a screenshot of anyone's real data.
+ * The public face of the app (§7.20): a one-line pitch, three things it does,
+ * and the way in. Kept deliberately short — the old page was ~170 words of
+ * feature cards nobody reads on a sign-in screen. The data-handling note is
+ * still here, one click away, because the Anthropic disclosure matters.
  */
 
-const FEATURES: { title: string; body: string }[] = [
+const PILLARS: { label: string; hint: string; icon: ReactNode }[] = [
   {
-    title: "Every application in one grid",
-    body: "Company, role, status, dates — editable in place like a spreadsheet, filtered by the kind of work you're after.",
+    label: "Track",
+    hint: "Every application",
+    icon: (
+      <path d="M4 6h16M4 12h16M4 18h16M9 4v16" strokeLinecap="round" />
+    ),
   },
   {
-    title: "Your documents, ready to send",
-    body: "Store your resume and cover letter as PDF or Word. They come back byte-for-byte, so what you send is what you saved.",
+    label: "Store",
+    hint: "Resumes and letters",
+    icon: (
+      <>
+        <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" strokeLinejoin="round" />
+        <path d="M14 3v5h5" strokeLinejoin="round" />
+      </>
+    ),
   },
   {
-    title: "Research before you apply",
-    body: "Build a page on each employer — what they do, what to mention in an interview, which roles they open.",
-  },
-  {
-    title: "Prepare your answers",
-    body: "A question bank you answer once and revisit, plus the skills, courses and certifications you're working on.",
+    label: "Prep",
+    hint: "Interview answers",
+    icon: (
+      <path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z" strokeLinejoin="round" />
+    ),
   },
 ];
 
@@ -86,177 +93,228 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="h-dvh overflow-y-auto bg-bg">
-      <div className="mx-auto grid max-w-5xl gap-10 p-6 py-12 lg:grid-cols-[1.1fr_minmax(0,380px)] lg:py-20">
-        {/* ── What this is ──────────────────────────────────────────── */}
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <LogoTile className="size-10" />
-            <Wordmark className="text-lg" />
-          </div>
+    <div className="relative h-dvh overflow-x-hidden overflow-y-auto bg-bg">
+      {/* Backdrop: the dashboard's dot grid and a faint Pine wash — inside
+          the brand palette, nothing glowing. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_1px_1px,var(--color-edge)_1px,transparent_0)] bg-[size:26px_26px] [mask-image:radial-gradient(ellipse_80%_70%_at_30%_40%,black_20%,transparent_100%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed -top-48 -left-40 size-[42rem] rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-pine)_55%,transparent),transparent)]"
+      />
+      {/* Columns share a top edge (logo level with the card) and the pair is
+          centred on the screen as one block. */}
+      <main className="relative mx-auto grid min-h-dvh max-w-5xl content-center items-start gap-12 px-6 py-12 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-16">
+        {/* ── The pitch ─────────────────────────────────────────────── */}
+        <section className="animate-fade-up">
+          <Lockup tileClassName="size-11" wordClassName="text-xl" />
 
-          <h1 className="mt-6 text-3xl font-semibold leading-tight tracking-tight max-sm:text-2xl">
-            One place for the whole job hunt.
+          <h1 className="mt-10 text-[2.75rem] leading-[1.05] font-semibold tracking-[-0.03em] max-sm:mt-8 max-sm:text-[2rem]">
+            Your whole job hunt,
+            <br />
+            <span className="text-accent">one place.</span>
           </h1>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-muted">
-            CareerCommand keeps your applications, documents, employer research
-            and interview prep together — so when something is due you know what
-            to do next and where everything for it lives.
+          <p className="mt-4 text-[15px] text-ink-muted">
+            Track applications, store documents, prep interviews.
           </p>
 
-          <dl className="mt-8 grid gap-4 sm:grid-cols-2">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="rounded-md border border-edge bg-panel p-4"
+          <ul className="mt-10 grid max-w-lg grid-cols-3 gap-3 max-sm:mt-8 max-sm:gap-2">
+            {PILLARS.map((p, i) => (
+              <li
+                key={p.label}
+                className="animate-fade-up rounded-lg border border-edge bg-surface/80 p-3.5 backdrop-blur-[2px] max-sm:p-3"
+                style={{ animationDelay: `${120 + i * 70}ms` }}
               >
-                <dt className="text-xs font-semibold">{f.title}</dt>
-                <dd className="mt-1 text-[11px] leading-relaxed text-ink-muted">
-                  {f.body}
-                </dd>
-              </div>
+                <span
+                  className="grid size-9 place-items-center rounded-[22%] text-accent"
+                  style={{
+                    background: `linear-gradient(135deg, ${BRAND.pineFrom}, ${BRAND.pineTo})`,
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden className="size-[18px] fill-none stroke-current stroke-[1.8]">
+                    {p.icon}
+                  </svg>
+                </span>
+                <p className="mt-3 text-sm font-semibold">{p.label}</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-ink-muted">
+                  {p.hint}
+                </p>
+              </li>
             ))}
-          </dl>
-
-          <SamplePreview />
-
-          <p className="mt-8 max-w-xl text-[11px] leading-relaxed text-ink-faint">
-            <span className="font-medium text-ink-muted">Your data.</span> Your
-            records are stored in your browser and copied to your own account so
-            your devices stay in step — they aren&apos;t shared with other users
-            and aren&apos;t sold. You can export everything to a file at any
-            time from Data &amp; backup, and delete all of it from the same
-            panel. Company research is the one feature that sends anything
-            outside the app: the company name and website you enter are sent to
-            Anthropic&apos;s API to generate the dossier.
-          </p>
-        </div>
+          </ul>
+        </section>
 
         {/* ── The way in ────────────────────────────────────────────── */}
-        <div className="lg:pt-2">
+        <section className="animate-fade-up [animation-delay:180ms]">
           <form
             onSubmit={submit}
-            className="space-y-3 rounded-lg border border-edge bg-panel p-5"
+            className="relative overflow-hidden rounded-xl border border-edge-strong bg-surface p-6 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)]"
           >
-            <div>
-              <h2 className="text-sm font-semibold">
-                {mode === "signin"
-                  ? "Sign in"
-                  : mode === "signup"
-                    ? "Create your account"
-                    : "Reset your password"}
-              </h2>
-              <p className="mt-0.5 text-[11px] text-ink-muted">
-                {mode === "signin"
-                  ? "Your data syncs to every device you sign in on."
-                  : mode === "signup"
-                    ? "Free, and your workspace starts empty."
-                    : "We'll email you a link to choose a new one."}
-              </p>
+            {/* One Mint hairline — the only accent on the card. */}
+            <span
+              aria-hidden
+              className="absolute inset-x-6 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--color-accent),transparent)] opacity-60"
+            />
+
+            <h2 className="text-lg font-semibold tracking-tight">
+              {mode === "signin"
+                ? "Welcome back"
+                : mode === "signup"
+                  ? "Create your account"
+                  : "Reset your password"}
+            </h2>
+            <p className="mt-1 text-xs text-ink-muted">
+              {mode === "signin"
+                ? "Syncs to every device you sign in on."
+                : mode === "signup"
+                  ? "Free. Your workspace starts empty."
+                  : "We'll email you a link to choose a new one."}
+            </p>
+
+            <div className="mt-5 space-y-3">
+              <Field label="Email">
+                <input
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={INPUT}
+                />
+              </Field>
+
+              {mode !== "forgot" && (
+                <Field
+                  label="Password"
+                  aside={
+                    mode === "signin" ? (
+                      <button
+                        type="button"
+                        onClick={() => switchTo("forgot")}
+                        className="text-[11px] text-ink-muted transition-colors hover:text-accent"
+                      >
+                        Forgot?
+                      </button>
+                    ) : undefined
+                  }
+                >
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    autoComplete={
+                      mode === "signin" ? "current-password" : "new-password"
+                    }
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className={INPUT}
+                  />
+                  {mode === "signup" && (
+                    <span className="mt-1 block text-[10px] text-ink-faint">
+                      At least 6 characters.
+                    </span>
+                  )}
+                </Field>
+              )}
+
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-md border border-danger/40 bg-raised px-3 py-2 text-[11px] leading-relaxed text-danger"
+                >
+                  {error}
+                </p>
+              )}
+              {info && (
+                <p
+                  role="status"
+                  className="rounded-md border border-accent-dim bg-raised px-3 py-2 text-[11px] leading-relaxed text-accent-strong"
+                >
+                  {info}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="min-h-11 w-full rounded-md bg-accent text-sm font-semibold text-bg transition-colors hover:bg-accent-strong disabled:opacity-50"
+              >
+                {busy
+                  ? "Working…"
+                  : mode === "signin"
+                    ? "Sign in"
+                    : mode === "signup"
+                      ? "Create account"
+                      : "Email me a reset link"}
+              </button>
             </div>
 
-            <label className="block">
-              <span className="mb-1 block font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-                Email
-              </span>
-              <input
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full rounded-sm border border-edge bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-faint focus:border-accent"
-              />
-            </label>
-
-            {mode !== "forgot" && (
-              <label className="block">
-                <span className="mb-1 block font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-                  Password
-                </span>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  autoComplete={
-                    mode === "signin" ? "current-password" : "new-password"
-                  }
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-sm border border-edge bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-faint focus:border-accent"
-                />
-                {mode === "signup" && (
-                  <span className="mt-1 block text-[10px] text-ink-faint">
-                    At least 6 characters.
-                  </span>
-                )}
-              </label>
-            )}
-
-            {error && (
-              <p
-                role="alert"
-                className="rounded-sm border border-edge bg-raised px-3 py-2 text-[11px] leading-relaxed text-danger"
-              >
-                {error}
-              </p>
-            )}
-            {info && (
-              <p
-                role="status"
-                className="rounded-sm border border-accent-dim bg-raised px-3 py-2 text-[11px] leading-relaxed text-accent-strong"
-              >
-                {info}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full rounded-sm bg-accent py-2 text-sm font-semibold text-bg transition-colors hover:bg-accent-strong disabled:opacity-50"
-            >
-              {busy
-                ? "Working…"
-                : mode === "signin"
-                  ? "Sign in"
-                  : mode === "signup"
-                    ? "Create account"
-                    : "Email me a reset link"}
-            </button>
-
-            {mode === "signin" && (
-              <button
-                type="button"
-                onClick={() => switchTo("forgot")}
-                className="w-full text-center text-[11px] text-ink-muted transition-colors hover:text-accent"
-              >
-                Forgot your password?
-              </button>
-            )}
+            <p className="mt-5 border-t border-edge pt-4 text-center text-xs text-ink-muted">
+              {mode === "signin" ? (
+                <>
+                  New here?{" "}
+                  <SwitchLink onClick={() => switchTo("signup")}>
+                    Create an account
+                  </SwitchLink>
+                </>
+              ) : (
+                <>
+                  {mode === "forgot" ? "Remembered it? " : "Have an account? "}
+                  <SwitchLink onClick={() => switchTo("signin")}>
+                    Sign in
+                  </SwitchLink>
+                </>
+              )}
+            </p>
           </form>
 
-          <p className="mt-4 text-center text-xs text-ink-muted">
-            {mode === "signin" ? (
-              <>
-                New here?{" "}
-                <SwitchLink onClick={() => switchTo("signup")}>
-                  Create an account
-                </SwitchLink>
-              </>
-            ) : (
-              <>
-                Already have an account?{" "}
-                <SwitchLink onClick={() => switchTo("signin")}>
-                  Sign in
-                </SwitchLink>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
+          <details className="group mt-4 px-1">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center gap-1.5 text-[11px] text-ink-faint transition-colors select-none hover:text-ink-muted">
+              <svg viewBox="0 0 24 24" aria-hidden className="size-3.5 fill-none stroke-current stroke-2">
+                <rect x="5" y="11" width="14" height="9" rx="2" />
+                <path d="M8 11V8a4 4 0 018 0v3" />
+              </svg>
+              How your data is used
+            </summary>
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
+              Your records live in your browser and sync to your own account.
+              They aren&apos;t shared or sold, and you can export or delete
+              everything from Data and backup. Company research sends only the
+              company name and website you enter to Anthropic&apos;s API.
+            </p>
+          </details>
+        </section>
+      </main>
     </div>
+  );
+}
+
+const INPUT =
+  "min-h-11 w-full rounded-md border border-edge bg-bg px-3 text-sm outline-none transition-colors placeholder:text-ink-faint focus:border-accent";
+
+function Field({
+  label,
+  aside,
+  children,
+}: {
+  label: string;
+  aside?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 flex items-baseline justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+          {label}
+        </span>
+        {aside}
+      </span>
+      {children}
+    </label>
   );
 }
 
@@ -265,93 +323,15 @@ function SwitchLink({
   children,
 }: {
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className="font-medium text-accent transition-colors hover:text-accent-strong"
     >
       {children}
     </button>
-  );
-}
-
-/**
- * The tracker's real layout with invented rows. Labelled as a sample so it
- * can't be mistaken for live data, and it contains nobody's real records.
- */
-const SAMPLE_ROWS: {
-  company: string;
-  role: string;
-  status: string;
-  tone: string;
-  when: string;
-}[] = [
-  {
-    company: "Northwind Rail",
-    role: "Graduate Engineer",
-    status: "Interview",
-    tone: "text-warn",
-    when: "Thu 2pm",
-  },
-  {
-    company: "Harbour & Co",
-    role: "Weekend Floor Staff",
-    status: "Applied",
-    tone: "text-info",
-    when: "6 days ago",
-  },
-  {
-    company: "Vellum Design",
-    role: "Design Intern",
-    status: "Offer",
-    tone: "text-ok",
-    when: "reply by Fri",
-  },
-];
-
-function SamplePreview() {
-  return (
-    <figure className="mt-8">
-      <figcaption className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-        <span className="size-1.5 rounded-full bg-ink-faint" />
-        Sample — invented companies, not real records
-      </figcaption>
-      <div className="overflow-hidden rounded-md border border-edge bg-panel">
-        <table className="w-full text-left text-[11px]">
-          <thead className="border-b border-edge text-ink-faint">
-            <tr>
-              <th scope="col" className="px-3 py-2 font-medium">
-                Company
-              </th>
-              <th scope="col" className="px-3 py-2 font-medium">
-                Role
-              </th>
-              <th scope="col" className="px-3 py-2 font-medium">
-                Status
-              </th>
-              <th scope="col" className="px-3 py-2 font-medium max-sm:hidden">
-                Next
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {SAMPLE_ROWS.map((r) => (
-              <tr key={r.company} className="border-b border-edge last:border-0">
-                <td className="px-3 py-2 font-medium text-ink">{r.company}</td>
-                <td className="px-3 py-2 text-ink-muted">{r.role}</td>
-                <td className={`px-3 py-2 font-medium ${r.tone}`}>
-                  {r.status}
-                </td>
-                <td className="px-3 py-2 text-ink-muted max-sm:hidden">
-                  {r.when}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </figure>
   );
 }
