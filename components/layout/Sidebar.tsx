@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { warmVaultCovers } from "@/lib/vaultWarmup";
 import { Badge } from "@/components/ui/Badge";
 import { LogoTile, Wordmark } from "@/components/brand/Logo";
 import { BackupControl } from "@/components/layout/BackupControl";
@@ -21,6 +23,10 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+
+  // The sidebar mounts once the app is ready (signed in and synced), which is
+  // the right moment to get the Vault's covers ready in the background.
+  useEffect(() => warmVaultCovers(), []);
 
   return (
     <aside className="flex w-52 shrink-0 flex-col border-r border-edge bg-surface max-md:w-16">

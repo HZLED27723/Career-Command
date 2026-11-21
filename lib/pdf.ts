@@ -1,4 +1,5 @@
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+import { metaRepo } from "./db";
 
 /**
  * In-app PDF rendering for the Vault (§7.17). PDF.js replaces the browser's own
@@ -52,7 +53,9 @@ export function releasePdf(blob: Blob | undefined | null): void {
   if (!blob) return;
   docs.get(blob)?.then((d) => d.destroy()).catch(() => {});
   docs.delete(blob);
-  thumbs.delete(blob);
+  const sig = fileSignature(blob);
+  for (const k of thumbs.keys()) if (k.startsWith(`${sig}@`)) thumbs.delete(k);
+  for (const k of ready.keys()) if (k.startsWith(`${sig}@`)) ready.delete(k);
 }
 
 export interface PdfThumbnail {
@@ -63,13 +66,44 @@ export interface PdfThumbnail {
   aspect: number;
 }
 
-const thumbs = new WeakMap<Blob, Promise<PdfThumbnail>>();
+/**
+ * Thumbnails are keyed by what the file IS, not by the Blob object: every
+ * IndexedDB read hands back a fresh Blob, so an identity-keyed cache missed on
+ * every visit and re-rendered each cover from scratch. A stored upload is a
+ * File, so name + size + type + lastModified identifies it.
+ */
+const fileSignature = (blob: Blob) => {
+  const f = blob as Partial<File>;
+  return `${blob.size}:${blob.type}:${f.name ?? ""}:${f.lastModified ?? ""}`;
+};
 
-/** A cover image of page one, rendered once per file. */
-export function pdfThumbnail(blob: Blob, cssWidth = 240): Promise<PdfThumbnail> {
-  let t = thumbs.get(blob);
+const thumbs = new Map<string, Promise<PdfThumbnail>>();
+/** Finished thumbnails, readable synchronously so a revisit paints at once. */
+const ready = new Map<string, PdfThumbnail>();
+
+/** The cover if it's already rendered this session — no await, no flash. */
+export const peekThumbnail = (blob: Blob, cssWidth = 300): PdfThumbnail | null =>
+  ready.get(`${fileSignature(blob)}@${cssWidth}`) ?? null;
+
+/**
+ * A cover image of page one, rendered once per file. With `slot`, the finished
+ * cover is also kept in the device-local `meta` table (never synced or backed
+ * up) so the Vault shows it instantly after a reload too; one entry per slot,
+ * overwritten when the file changes.
+ */
+export function pdfThumbnail(
+  blob: Blob,
+  cssWidth = 300,
+  slot?: string,
+): Promise<PdfThumbnail> {
+  const key = `${fileSignature(blob)}@${cssWidth}`;
+  let t = thumbs.get(key);
   if (!t) {
     t = (async () => {
+      if (slot) {
+        const saved = await readSavedThumb(slot, key);
+        if (saved) return saved;
+      }
       const doc = await openPdf(blob);
       const page = await doc.getPage(1);
       const base = page.getViewport({ scale: 1 });
@@ -82,16 +116,43 @@ export function pdfThumbnail(blob: Blob, cssWidth = 240): Promise<PdfThumbnail> 
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: ctx, viewport }).promise;
-      return {
-        src: canvas.toDataURL("image/png"),
+      const thumb: PdfThumbnail = {
+        // JPEG keeps a stored cover around 50–80 KB instead of ~200 KB PNG.
+        src: canvas.toDataURL("image/jpeg", 0.88),
         pages: doc.numPages,
         aspect: base.width / base.height,
       };
+      if (slot) void saveThumb(slot, key, thumb);
+      return thumb;
     })();
-    thumbs.set(blob, t);
-    t.catch(() => thumbs.delete(blob));
+    thumbs.set(key, t);
+    t.then(
+      (done) => ready.set(key, done),
+      () => thumbs.delete(key),
+    );
   }
   return t;
+}
+
+const THUMB_PREFIX = "pdfthumb:";
+
+async function readSavedThumb(slot: string, key: string): Promise<PdfThumbnail | null> {
+  try {
+    const raw = await metaRepo.get(THUMB_PREFIX + slot);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as { key: string; thumb: PdfThumbnail };
+    return saved.key === key ? saved.thumb : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveThumb(slot: string, key: string, thumb: PdfThumbnail) {
+  try {
+    await metaRepo.set(THUMB_PREFIX + slot, JSON.stringify({ key, thumb }));
+  } catch {
+    /* a cache write failing only costs a re-render next time */
+  }
 }
 
 /**

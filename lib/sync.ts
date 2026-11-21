@@ -196,6 +196,8 @@ export async function reconcileOnLogin(
     } finally {
       suppressTracking = false;
     }
+    // Cached Vault covers are renders of the previous account's documents.
+    await db.meta.where("key").startsWith("pdfthumb:").delete();
   }
 
   const cloud = await pullCloud(userId);

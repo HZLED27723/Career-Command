@@ -273,3 +273,10 @@ The framed gallery looked uneven because every certificate is a different shape,
 * **"Add to tracker"** on the Open now tile logs a draft application with `roleShort` as the role; once one exists the tile shows its status instead.
 * Below `lg` the page is single-pane (list, then dossier with "All companies" back) — at 768–1023 px the two-pane layout squeezed the dossier to a sliver. Priority/Track chips wrap.
 * **The edge function must be redeployed for the short fields and Shorten** (see DEPLOY.md). Until it is, research works as before and the tiles use excerpts.
+
+### 7.22 Vault: instant open, shelf fills the screen (2026-11-22)
+
+* **Owner check is local**: `useIsOwner` uses `getSession()` (stored session, no network) instead of `getUser()` (an auth-server round trip on every mount that held the Vault blank for seconds), and caches the answer module-wide. It's a display preference — which built-in templates to show — not access control.
+* **Cover thumbnails are keyed by file signature** (size, type, name, lastModified), not Blob identity: every IndexedDB read returns a fresh Blob, so the old WeakMap missed on every visit. `peekThumbnail` lets a revisit paint covers on the first frame. Finished covers (JPEG data URLs) are also kept per slot in the device-local `meta` table as `pdfthumb:<slot>` — never synced or backed up — so a reload is fast too; they're cleared when a different account signs in on the device.
+* **`warmVaultCovers`** (`lib/vaultWarmup.ts`, called once from `Sidebar` on idle) loads PDF.js and prepares every stored PDF's cover before the Vault is opened. Its slot ids and width (300) must match `ShelfCard`'s or the cache keys differ.
+* **Desktop shelf fills the viewport**: the page is a column, the grid takes the remaining height, cards are full height, and the cover is the flexible part (`lg:flex-1 lg:[contain:size]` — the size containment stops the full-size template preview inside it from inflating the row) with the paper sized by height. Opening File info shrinks that card's cover instead of stretching the row. Phones keep the compact rows.

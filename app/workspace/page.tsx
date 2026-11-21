@@ -531,7 +531,7 @@ function Vault() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-5">
+    <div className="mx-auto flex min-h-full max-w-6xl flex-col p-5">
       <input
         ref={importInput}
         type="file"
@@ -624,10 +624,11 @@ function Vault() {
           ))}
         </div>
       ) : (
-        <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid items-start gap-4 sm:grid-cols-2 lg:min-h-[30rem] lg:flex-1 lg:grid-cols-3 lg:items-stretch">
           {DOCS.map((d) => (
             <ShelfCard
               key={d.id}
+              slot={d.id}
               kindLabel={d.kind}
               track={d.track}
               trackLabel={d.trackLabel}

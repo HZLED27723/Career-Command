@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { pdfThumbnail, type PdfThumbnail } from "@/lib/pdf";
+import { pdfThumbnail, peekThumbnail, type PdfThumbnail } from "@/lib/pdf";
 import { DocumentUpload, isPdfFile } from "./DocumentUpload";
 
 /**
@@ -51,23 +51,30 @@ const fileSize = (bytes: number) =>
 const wordExt = (name: string) => (/\.docx$/i.test(name) ? ".docx" : ".doc");
 
 /** Page one of a stored PDF; null while rendering, "error" if it can't be. */
-function usePdfThumbnail(blob: Blob | null) {
-  const [thumb, setThumb] = useState<PdfThumbnail | "error" | null>(null);
+function usePdfThumbnail(blob: Blob | null, slot: string) {
+  // Start from an already-rendered cover when there is one, so a revisit
+  // paints it on the first frame instead of flashing the placeholder.
+  const [thumb, setThumb] = useState<PdfThumbnail | "error" | null>(() =>
+    blob ? peekThumbnail(blob) : null,
+  );
   useEffect(() => {
     if (!blob) return;
     let cancelled = false;
-    setThumb(null);
-    pdfThumbnail(blob)
+    const known = peekThumbnail(blob);
+    setThumb(known);
+    if (known) return;
+    pdfThumbnail(blob, 300, slot)
       .then((t) => !cancelled && setThumb(t))
       .catch(() => !cancelled && setThumb("error"));
     return () => {
       cancelled = true;
     };
-  }, [blob]);
+  }, [blob, slot]);
   return blob ? thumb : null;
 }
 
 export function ShelfCard({
+  slot,
   kindLabel,
   track,
   trackLabel,
@@ -86,6 +93,8 @@ export function ShelfCard({
   onReplace,
   onRemove,
 }: {
+  /** Vault slot id — names this card's saved cover in the device cache. */
+  slot: string;
   kindLabel: string;
   track: ShelfTrack;
   trackLabel: string;
@@ -111,7 +120,7 @@ export function ShelfCard({
   const infoId = useId();
   const file = content.kind === "file" ? content.file : null;
   const isPdf = file ? isPdfFile(file.type, file.name) : false;
-  const thumb = usePdfThumbnail(isPdf ? file!.blob : null);
+  const thumb = usePdfThumbnail(isPdf ? file!.blob : null, slot);
   const style = content.kind === "empty" ? null : TRACK_STYLE[track];
   const shownTitle = title || placeholderTitle;
 
@@ -124,10 +133,10 @@ export function ShelfCard({
       : `Word ${wordExt(file.name)} · ${fileSize(file.blob.size)}`;
 
   return (
-    <article className="group/card flex flex-col overflow-hidden rounded-lg border border-edge bg-panel transition-colors hover:border-edge-strong max-sm:flex-row">
+    <article className="group/card flex flex-col overflow-hidden rounded-lg border border-edge bg-panel transition-colors hover:border-edge-strong max-sm:flex-row lg:h-full">
       {/* ── Cover ──────────────────────────────────────────────────── */}
       {content.kind === "empty" ? (
-        <div className="grid aspect-[4/3] shrink-0 place-items-center bg-cover-neutral max-sm:aspect-auto max-sm:w-24 max-sm:py-3">
+        <div className="grid aspect-[4/3] shrink-0 place-items-center bg-cover-neutral max-sm:aspect-auto max-sm:w-24 max-sm:py-3 lg:aspect-auto lg:min-h-56 lg:flex-1 lg:[contain:size]">
           <div className="grid aspect-[1/1.414] w-[42%] place-items-center rounded-xs border border-dashed border-edge-strong max-sm:w-14">
             <span className="font-mono text-[9px] uppercase tracking-widest text-ink-faint">
               Empty
@@ -139,14 +148,14 @@ export function ShelfCard({
           ref={openRef}
           onClick={onOpen}
           aria-label={`Open ${shownTitle} in Quick Look`}
-          className={`relative grid aspect-[4/3] shrink-0 place-items-center overflow-hidden ${style!.backing} max-sm:aspect-auto max-sm:w-24 max-sm:py-3`}
+          className={`relative grid aspect-[4/3] shrink-0 place-items-center overflow-hidden ${style!.backing} max-sm:aspect-auto max-sm:w-24 max-sm:py-3 lg:aspect-auto lg:min-h-56 lg:flex-1 lg:[contain:size]`}
         >
           <Cover content={content} thumb={thumb} />
         </button>
       )}
 
       {/* ── Details ────────────────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col p-4 max-sm:p-3">
+      <div className="flex min-w-0 flex-1 flex-col p-4 max-sm:p-3 lg:flex-none">
         <p
           className={`font-mono text-[10px] uppercase tracking-widest ${style?.ink ?? "text-ink-faint"}`}
         >
@@ -298,7 +307,7 @@ function Cover({
   return (
     <div
       className={`relative overflow-hidden rounded-xs bg-white shadow-[0_14px_30px_-12px_rgba(0,0,0,0.85)] ring-1 ring-black/30 transition-transform duration-300 -rotate-2 group-hover/card:-translate-y-1 group-hover/card:-rotate-3 ${
-        landscape ? "w-[66%] max-sm:w-[76px]" : "w-[46%] max-sm:w-14"
+        landscape ? "w-[66%] max-sm:w-[76px] lg:w-[78%]" : "w-[46%] max-sm:w-14 lg:h-[80%] lg:w-auto"
       }`}
       style={{
         aspectRatio:

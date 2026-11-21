@@ -36,21 +36,34 @@ export const isOwnerEmail = (email: string | null | undefined) =>
  * With no cloud configured the app is running as a purely local install, which
  * only the owner can reach — so local-only mode counts as owner.
  */
+/**
+ * Last resolved answer, kept for the page's lifetime so every later mount (the
+ * Vault, Certifications) starts with it instead of waiting again.
+ */
+let cachedIsOwner: boolean | null = isSupabaseConfigured ? null : true;
+
 export function useIsOwner(): boolean | null {
-  const [isOwner, setIsOwner] = useState<boolean | null>(
-    isSupabaseConfigured ? null : true,
-  );
+  const [isOwner, setIsOwner] = useState<boolean | null>(cachedIsOwner);
 
   useEffect(() => {
     if (!supabase) return;
     let cancelled = false;
+    const resolve = (email: string | null | undefined) => {
+      cachedIsOwner = isOwnerEmail(email);
+      if (!cancelled) setIsOwner(cachedIsOwner);
+    };
 
-    supabase.auth.getUser().then(({ data }) => {
-      if (!cancelled) setIsOwner(isOwnerEmail(data.user?.email));
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!cancelled) setIsOwner(isOwnerEmail(session?.user?.email));
-    });
+    /*
+     * getSession() reads the locally stored session — no network. This used to
+     * be getUser(), which round-trips to the auth server on every mount and
+     * held the whole Vault on a blank screen for seconds. This is a display
+     * preference (whose built-in templates to show), not access control: the
+     * app is already behind AuthGate, and RLS guards the data.
+     */
+    supabase.auth.getSession().then(({ data }) => resolve(data.session?.user?.email));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) =>
+      resolve(session?.user?.email),
+    );
 
     return () => {
       cancelled = true;
