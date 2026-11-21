@@ -373,11 +373,11 @@ function CredentialCard({
 
   return (
     <article className="flex flex-col rounded-lg border border-edge bg-panel p-4 transition duration-200 hover:-translate-y-0.5 hover:border-edge-strong hover:shadow-[0_14px_32px_-18px_rgba(0,0,0,0.9)]">
-      {/* Badge and title on the left, a larger issuer logo beside both — so
-          the logo fills the header instead of leaving a gap under it, and a
-          long title wraps (two lines at most) beside it rather than running
-          the full width. */}
-      <div className="flex items-start gap-3">
+      {/* All the details on the left, the issuer logo beside the whole block
+          and exactly as tall as it (stretched, kept square) — so there's no
+          empty space under the logo whether the title takes one line or two.
+          A long title wraps beside the logo, two lines at most. */}
+      <div className="flex gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
             <span className="rounded-sm border border-accent-dim px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-accent">
@@ -395,6 +395,23 @@ function CredentialCard({
           >
             {cert.title}
           </h3>
+          <p className="mt-2 truncate text-xs text-accent" title={cert.issuer}>
+            {cert.issuer || "Issuer not recorded"}
+          </p>
+          <p className="mt-1 font-mono text-[10px] text-ink-faint">
+            {issued ? `Issued ${issued}` : "Undated"}
+            {cert.expiresDate && (
+              <>
+                {" · "}
+                <ExpiryLabel value={cert.expiresDate} />
+              </>
+            )}
+          </p>
+          {cert.fromCourseId !== undefined && (
+            <p className="mt-1 font-mono text-[10px] text-ink-faint">
+              Logged from a completed course
+            </p>
+          )}
         </div>
         <IssuerTile
           issuer={cert.issuer}
@@ -409,26 +426,6 @@ function CredentialCard({
           onClick={hasProof ? onView : onAttach}
         />
       </div>
-
-      {/* The header is always the logo's height (a two-line title fits beside
-          it), so issuer and date sit at the same height on every card. */}
-      <p className="mt-3 truncate text-xs text-accent" title={cert.issuer}>
-        {cert.issuer || "Issuer not recorded"}
-      </p>
-      <p className="mt-1 font-mono text-[10px] text-ink-faint">
-        {issued ? `Issued ${issued}` : "Undated"}
-        {cert.expiresDate && (
-          <>
-            {" · "}
-            <ExpiryLabel value={cert.expiresDate} />
-          </>
-        )}
-      </p>
-      {cert.fromCourseId !== undefined && (
-        <p className="mt-1 font-mono text-[10px] text-ink-faint">
-          Logged from a completed course
-        </p>
-      )}
 
       {/* Actions, pinned to the bottom so every card in a row lines up */}
       <div className="mt-auto pt-4">
@@ -502,7 +499,7 @@ function IssuerTile({
       onClick={onClick}
       aria-label={label}
       title={hasProof ? "Preview certificate" : "Attach proof"}
-      className="group/tile relative grid size-[4.5rem] shrink-0 place-items-center overflow-hidden rounded-md ring-1 ring-edge-strong transition hover:ring-accent"
+      className="group/tile relative grid aspect-square min-h-20 shrink-0 self-stretch place-items-center overflow-hidden rounded-md ring-1 ring-edge-strong transition hover:ring-accent"
       style={url ? undefined : { backgroundColor: monogramColour(issuer) }}
     >
       {url ? (
