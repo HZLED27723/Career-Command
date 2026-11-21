@@ -285,6 +285,7 @@ The framed gallery looked uneven because every certificate is a different shape,
 
 * Date and action columns are fixed width (`w-36` each) so every row's date lines up; actions are always visible (hover-only hid them on touch screens).
 * `DateCell` shows "21 Jun 2026" / "set date" via `parseLocalDate` + `formatDate` and opens the native picker with `showPicker()`; the `<input type="date">` stays in the DOM but hidden. Completed courses sort by `completedDate`, newest first.
-* Course icons: own logo → issuer logo shared with Certifications (`issuerKey`) → favicon → two-letter monogram on `monogramColour`. Uploads go through `shrinkLogo`. Delete confirms when notes, link, logo or skill links would be lost.
+* Days are zero-padded ("08 Dec 2025") so every date in the mono column is the same length. Actions column is `w-40` and "log in vault →" never wraps.
+* Course icons: own logo → issuer logo shared with Certifications (`issuerKey`) → favicon → two-letter monogram on `monogramColour`. Logos and favicons fill the tile edge to edge (`object-cover`, no paper padding — owner's call; wide wordmarks get cropped at the sides). Uploads go through `shrinkLogo`. Delete confirms when notes, link, logo or skill links would be lost.
 * Phones: the title takes the first line; date and actions wrap below.
 * Three redesigns were mocked (focus card, lanes, timeline) and declined for now — A and B would need a new per-course progress field.

@@ -403,18 +403,18 @@ function CourseIcon({ course, sharedLogo }: { course: Course; sharedLogo?: Blob 
           }
         }}
       />
+      {/* Logos fill the whole tile edge to edge (cropping, not letterboxing):
+          the owner wants a full icon, not a logo floating in a white mat. */}
       {logoUrl ? (
-        <span className="grid size-full place-items-center bg-paper p-1">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
-        </span>
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logoUrl} alt="" className="absolute inset-0 size-full object-cover" />
       ) : domain && !faviconFailed ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
           alt=""
           onError={() => setFaviconFailed(true)}
-          className="size-5 object-contain"
+          className="absolute inset-0 size-full object-cover"
         />
       ) : (
         <span className="font-mono text-[11px] font-semibold text-mist">
@@ -428,10 +428,13 @@ function CourseIcon({ course, sharedLogo }: { course: Course; sharedLogo?: Blob 
   );
 }
 
-/** "21 Jun 2026" from a stored YYYY-MM-DD, read as a local date. */
+/**
+ * "08 Dec 2025" from a stored YYYY-MM-DD, read as a local date. The day is
+ * zero-padded so every date in the monospaced column is the same length.
+ */
 const showDay = (iso?: string) => {
   const d = parseLocalDate(iso);
-  return d ? formatDate(d.toISOString()) : null;
+  return d ? formatDate(d.toISOString()).padStart(11, "0") : null;
 };
 
 /**
@@ -626,7 +629,7 @@ function CourseRow({
 
         {/* Always visible (hover-only hid them on touch screens) and fixed
             width, so the date column lines up whatever the status. */}
-        <span className="flex w-36 shrink-0 items-center justify-end gap-2 max-sm:order-4 max-sm:ml-auto max-sm:w-auto">
+        <span className="flex w-40 shrink-0 items-center justify-end gap-2 max-sm:order-4 max-sm:ml-auto max-sm:w-auto">
           {course.status === "planned" && (
             <button
               onClick={() =>
@@ -663,7 +666,7 @@ function CourseRow({
             ) : (
               <button
                 onClick={() => void logInVault()}
-                className="rounded-sm border border-edge px-2 py-0.5 font-mono text-[10px] text-accent transition-colors hover:border-accent-dim"
+                className="rounded-sm border border-edge px-2 py-0.5 font-mono text-[10px] whitespace-nowrap text-accent transition-colors hover:border-accent-dim"
                 title="Create an entry in the Certifications vault"
               >
                 log in vault →
