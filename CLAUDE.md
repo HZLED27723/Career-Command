@@ -303,3 +303,7 @@ The framed gallery looked uneven because every certificate is a different shape,
 * The Applications bar has a caption ("17 open · 1 offer · 28 rejected"; open = draft + applied + interview). "Interviews" is now "Interviews scheduled" — it counts the current interview status only, which read as a mistake beside "1 offer".
 * **"What needs doing" is hidden when nothing is due in the next two weeks** (owner asked to remove the empty box). It reappears as soon as a dated deadline / interview / follow-up / course target falls inside the window; an account with no applications still gets the "Add an application" nudge. Only dated items are ever listed.
 * Page width `max-w-6xl` (was `5xl`). Clock, Vault tile and the rest are unchanged.
+
+### 7.26 Shared page backdrop (2026-11-22)
+
+The dashboard's dot grid + faint Mint glow is now `components/layout/PageBackdrop.tsx`, rendered once in the layout's `<main>` (which is `relative`), so every page has it behind its content. It is not in `template.tsx`, so it stays still while pages animate in; the template's wrapper is `relative` to sit above it. It covers the first screen and scrolls away. Keep it this faint — brand §06 rules out glows that compete with content; panels on solid surfaces hide it, which is intended.

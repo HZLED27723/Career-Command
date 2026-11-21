@@ -99,16 +99,9 @@ export default function DashboardPage() {
             : "Let's line up your first opportunity.";
 
   return (
-    <div className="relative min-h-full overflow-hidden">
-      {/* Dot-grid backdrop + top accent glow */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,var(--color-edge)_1px,transparent_0)] bg-[size:26px_26px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black_30%,transparent_100%)]"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[42rem] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-accent)_9%,transparent),transparent)]"
-      />
+    // The dot grid and Mint glow that used to live here are now the shared
+    // PageBackdrop in the layout, behind every page.
+    <div className="relative min-h-full">
 
       <div className="relative mx-auto max-w-6xl p-6">
         {/* ── Header ──────────────────────────────────────────────── */}

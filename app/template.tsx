@@ -7,5 +7,6 @@ export default function Template({
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="h-full animate-page-enter">{children}</div>;
+  // `relative` keeps the page above the layout's PageBackdrop.
+  return <div className="relative h-full animate-page-enter">{children}</div>;
 }

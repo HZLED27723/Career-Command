@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { PageBackdrop } from "@/components/layout/PageBackdrop";
 import { AuthGate } from "@/components/auth/AuthGate";
 
 const geistSans = Geist({
@@ -64,7 +65,10 @@ export default function RootLayout({
             <Sidebar />
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar />
-              <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+              <main className="relative min-h-0 flex-1 overflow-auto">
+                <PageBackdrop />
+                {children}
+              </main>
             </div>
           </div>
         </AuthGate>
