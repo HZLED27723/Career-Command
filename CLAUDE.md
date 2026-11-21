@@ -305,6 +305,12 @@ The framed gallery looked uneven because every certificate is a different shape,
 * Page width `max-w-6xl` (was `5xl`). Clock and the rest are unchanged.
 * **The Vault tile shows the real documents** (`components/dashboard/VaultCovers.tsx`): three fanned papers (Technical Résumé, Résumé, Cover Letter) showing page one of each stored PDF, via `pdfThumbnail(blob, 300, slot)` — same slot ids and width as ShelfCard / `warmVaultCovers`, so they're cache hits. A slot with no PDF (empty, built-in template, Word file) keeps the drawn placeholder paper.
 
+### 7.28 Launch-readiness fixes found in the phone screenshots (2026-11-22)
+
+* **Greeting**: the dashboard was hard-coded to "Welcome, Hamdan Zahid." for every account. `useDisplayName()` (`lib/owner.ts`) returns `OWNER_NAME` on the owner's account (and in local-only mode), else `user_metadata.full_name`/`name` if an auth provider set one, else `null` → "Welcome back." Never guess a name from an email. It's held invisible for the instant the local session is read so the owner's greeting doesn't flicker.
+* **Date-only interviews** read "Tuesday, 12:00 AM": `describeWhen` tested the ISO string for "hh:mm", which every ISO string has. It now shows a time only when the local time isn't midnight.
+* **Tracker on phones** (below `md`): the 880px spreadsheet is replaced by `PhoneCard`s — company, role, status pill, and one date (interview → deadline → follow-up → applied, "Tue 24 Nov" built by hand). Tapping opens company/role/status/track/notes plus the same `ApplicationDetail` panel; delete confirms on touch. A new application opens its card. The track filter scrolls inside its own control, and the page scrolls normally (`md:h-full`) instead of sideways. Desktop is unchanged.
+
 ### 7.27 Sidebar: arrow-key tabs and a sliding highlight (2026-11-22)
 
 * `components/layout/Sidebar.tsx`: while focus is in the nav (clicking a tab puts it there — the click handler focuses the link because Safari doesn't), ↑/↓ and Home/End move between tabs. The highlight and focus move at once; the route follows after 160 ms without another press (`ARROW_SETTLE_MS`), so holding ↓ glides down the list and opens only the tab you stop on. Arrow keys anywhere else still scroll pages as normal — don't make this a global listener.

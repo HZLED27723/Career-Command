@@ -69,8 +69,11 @@ export function daysUntil(due: Date, now: Date): number {
 /** How the date reads to a person. */
 export function describeWhen(action: NextAction): string {
   const { daysAway, kind, due } = action;
+  // A date-only interview parses to local midnight. The old check tested the
+  // ISO string for "hh:mm", which every ISO string has, so date-only
+  // interviews read "Tuesday, 12:00 AM".
   const time =
-    kind === "interview" && /\d{2}:\d{2}/.test(due.toISOString())
+    kind === "interview" && (due.getHours() !== 0 || due.getMinutes() !== 0)
       ? due.toLocaleTimeString(undefined, {
           hour: "numeric",
           minute: "2-digit",

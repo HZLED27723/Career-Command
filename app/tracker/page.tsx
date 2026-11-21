@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { applicationRepo } from "@/lib/db";
 import { ApplicationDetail } from "@/components/tracker/ApplicationDetail";
+import { parseLocalDate } from "@/lib/actions";
 import type {
   Application,
   ApplicationStatus,
@@ -161,16 +162,23 @@ export default function TrackerPage() {
   const toggleSort = (key: SortKey) =>
     setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : 1 }));
 
-  const addRow = () =>
-    applicationRepo.add({
+  const addRow = async () => {
+    const id = await applicationRepo.add({
       company: "",
       role: "",
       track: trackFilter === "all" ? "engineering" : trackFilter,
       status: statusFilter ?? "draft",
     });
+    // On a phone a new card starts open, ready to fill in; on desktop the
+    // empty row is already editable in place.
+    if (window.matchMedia("(max-width: 767px)").matches)
+      setExpanded((prev) => new Set(prev).add(id));
+  };
 
   return (
-    <div className="mx-auto flex h-full max-w-6xl flex-col gap-4 p-5">
+    // Desktop: fills the screen and the grid scrolls inside it. Phones: the
+    // page scrolls normally and the grid becomes a list of cards.
+    <div className="mx-auto flex max-w-6xl flex-col gap-4 p-5 md:h-full">
       {/* ── Dashboard strip ─────────────────────────────────────────── */}
       <div className="grid shrink-0 grid-cols-6 gap-2 max-lg:grid-cols-3">
         <StatCard
@@ -209,7 +217,9 @@ export default function TrackerPage() {
 
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <div className="flex rounded-sm border border-edge bg-panel p-0.5">
+        {/* On a phone the four tracks don't fit: scroll inside the control
+            rather than pushing the whole page sideways. */}
+        <div className="flex max-w-full overflow-x-auto rounded-sm border border-edge bg-panel p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(
             [
               { value: "all", label: "All tracks", dot: "" },
@@ -223,7 +233,7 @@ export default function TrackerPage() {
             <button
               key={t.value}
               onClick={() => setTrackFilter(t.value)}
-              className={`flex items-center gap-1.5 rounded-xs px-3 py-1 text-xs font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 rounded-xs px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors max-md:min-h-9 ${
                 trackFilter === t.value
                   ? "bg-raised text-accent-strong"
                   : "text-ink-muted hover:text-ink"
@@ -250,8 +260,30 @@ export default function TrackerPage() {
         </button>
       </div>
 
+      {/* ── Phones: one card per application ────────────────────────── */}
+      <div className="flex flex-col gap-2 md:hidden">
+        {total === 0 ? (
+          <div className="rounded-md border border-edge bg-surface">
+            <EmptyState />
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="rounded-md border border-dashed border-edge px-4 py-8 text-center text-xs text-ink-faint">
+            No applications match the current filters.
+          </p>
+        ) : (
+          rows.map((app) => (
+            <PhoneCard
+              key={app.id}
+              app={app}
+              expanded={expanded.has(app.id)}
+              onToggleExpand={() => toggleExpand(app.id)}
+            />
+          ))
+        )}
+      </div>
+
       {/* ── The grid ────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-auto rounded-md border border-edge bg-surface">
+      <div className="min-h-0 flex-1 overflow-auto rounded-md border border-edge bg-surface max-md:hidden">
         {total === 0 ? (
           <EmptyState />
         ) : (
@@ -321,7 +353,8 @@ export default function TrackerPage() {
         {statusFilter && ` · ${statusMeta(statusFilter).label}`}
         {trackFilter !== "all" &&
           ` · ${TRACKS.find((t) => t.value === trackFilter)?.label}`}
-        {" · click any cell to edit"}
+        <span className="max-md:hidden">{" · click any cell to edit"}</span>
+        <span className="md:hidden">{" · tap one to edit"}</span>
       </p>
     </div>
   );
@@ -543,6 +576,136 @@ function Row({
         </tr>
       )}
     </>
+  );
+}
+
+/**
+ * "Tue 24 Nov" from a stored YYYY-MM-DD, read as a local date. Built by hand:
+ * locale formats vary ("Tue, Nov 24", "Sept") and the card has little room.
+ */
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDay = (iso?: string) => {
+  const d = parseLocalDate(iso);
+  return d ? `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}` : null;
+};
+
+/** The one date worth showing on a phone card, most pressing first. */
+function nextDate(app: Application): string | null {
+  const open = app.status === "draft" || app.status === "applied" || app.status === "interview-scheduled";
+  if (open && app.interviewDate) return `Interview ${shortDay(app.interviewDate)}`;
+  if (open && app.deadline) return `Closes ${shortDay(app.deadline)}`;
+  if (open && app.followUpDate) return `Follow up ${shortDay(app.followUpDate)}`;
+  if (app.appliedDate) return `Applied ${shortDay(app.appliedDate)}`;
+  return null;
+}
+
+/**
+ * The Tracker below tablet width: one card per application instead of an
+ * 880px spreadsheet squeezed into a phone. Tap to open the same fields the
+ * row edits, then the same detail panel (dates, job ad, documents sent).
+ */
+function PhoneCard({
+  app,
+  expanded,
+  onToggleExpand,
+}: {
+  app: Application;
+  expanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const id = app.id!;
+  const commit = (patch: Parameters<typeof applicationRepo.update>[1]) =>
+    applicationRepo.update(id, patch);
+  const status = statusMeta(app.status);
+  const track = trackMeta(app.track);
+  const when = nextDate(app);
+  const field = "w-full rounded-sm border border-edge bg-panel px-3 py-2 text-sm outline-none focus:border-accent-dim min-h-11";
+  const label = "mb-1 block font-mono text-[10px] uppercase tracking-widest text-ink-faint";
+
+  return (
+    <div className={`overflow-hidden rounded-md border bg-surface ${expanded ? "border-edge-strong" : "border-edge"}`}>
+      <button
+        onClick={onToggleExpand}
+        aria-expanded={expanded}
+        className="flex min-h-11 w-full items-start gap-3 px-3 py-3 text-left transition-colors active:bg-raised"
+      >
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-sm font-medium ${app.company ? "" : "text-ink-faint"}`}>
+            {app.company || "New application"}
+          </span>
+          <span className="block truncate text-xs text-ink-muted">{app.role || "Add the role"}</span>
+          <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-faint">
+            <span className={`size-1.5 shrink-0 rounded-full ${track.dot}`} title={track.label} />
+            {/* The date matters more than the track name, which the dot's
+                colour already carries; name the track only when there's no date. */}
+            <span className="truncate">{when ?? track.label}</span>
+          </span>
+        </span>
+        <span
+          className={`mt-0.5 flex shrink-0 items-center gap-1.5 rounded-full border border-edge px-2 py-0.5 text-[11px] font-medium ${status.text}`}
+        >
+          <span className={`size-1.5 rounded-full ${status.dot}`} />
+          {status.label}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="animate-fade-in border-t border-edge">
+          <div className="grid grid-cols-2 gap-3 px-4 pt-4">
+            <label className="col-span-2 block">
+              <span className={label}>Company</span>
+              <input key={`c${app.company}`} defaultValue={app.company} placeholder="Company…" className={field}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v !== app.company) void commit({ company: v }); }} />
+            </label>
+            <label className="col-span-2 block">
+              <span className={label}>Role</span>
+              <input key={`r${app.role}`} defaultValue={app.role} placeholder="Role…" className={field}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v !== app.role) void commit({ role: v }); }} />
+            </label>
+            <label className="block">
+              <span className={label}>Status</span>
+              <select
+                value={app.status}
+                // Through setStatus so the change lands in the history, as on desktop.
+                onChange={(e) => void applicationRepo.setStatus(id, e.target.value as ApplicationStatus)}
+                className={`${field} ${status.text}`}
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s} className="bg-panel text-ink">{statusMeta(s).label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className={label}>Track</span>
+              <select value={app.track} onChange={(e) => void commit({ track: e.target.value as RoleTrack })} className={field}>
+                {TRACKS.map((t) => (
+                  <option key={t.value} value={t.value} className="bg-panel text-ink">{t.label}</option>
+                ))}
+              </select>
+            </label>
+            {/* Applied date lives in the detail panel below, with the others. */}
+            <label className="col-span-2 block">
+              <span className={label}>Notes</span>
+              <textarea key={`n${app.notes ?? ""}`} defaultValue={app.notes ?? ""} rows={2} placeholder="—" className={`${field} resize-y`}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v !== (app.notes ?? "")) void commit({ notes: v || undefined }); }} />
+            </label>
+          </div>
+          <ApplicationDetail app={app} commit={commit} />
+          <div className="flex justify-end border-t border-edge px-4 py-2">
+            <button
+              onClick={() => {
+                if (confirm(`Delete ${app.company || "this application"}? This can't be undone.`))
+                  void applicationRepo.remove(id);
+              }}
+              className="min-h-11 px-2 text-xs text-ink-faint transition-colors hover:text-danger"
+            >
+              Delete application
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

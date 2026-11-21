@@ -18,6 +18,7 @@ import { NextActions } from "@/components/dashboard/NextActions";
 import { VaultCovers } from "@/components/dashboard/VaultCovers";
 import { collectActions } from "@/lib/actions";
 import { isDrafted } from "@/lib/interview";
+import { useDisplayName } from "@/lib/owner";
 import type { ApplicationStatus } from "@/lib/types";
 
 const STATUS_ORDER: { status: ApplicationStatus; label: string; dot: string }[] =
@@ -112,7 +113,7 @@ export default function DashboardPage() {
               <TodayLabel />
             </p>
             <h2 className="text-[26px] font-semibold tracking-tight">
-              <Greeting name="Hamdan Zahid" />
+              <Greeting />
             </h2>
             <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>
           </div>
@@ -439,7 +440,13 @@ function Clock() {
 }
 
 /** Static welcome greeting. Name gets the accent colour for a personal pop. */
-function Greeting({ name }: { name: string }) {
+function Greeting() {
+  // Was hard-coded to the owner's name, so every account was greeted as him.
+  const name = useDisplayName();
+  // Held invisible for the moment the local session is read, so the owner's
+  // greeting doesn't flick from "Welcome back." to their name.
+  if (name === undefined) return <span className="invisible">Welcome back.</span>;
+  if (!name) return <>Welcome back.</>;
   return (
     <>
       Welcome, <span className="text-accent-strong">{name}</span>.

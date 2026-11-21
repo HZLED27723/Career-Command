@@ -73,3 +73,43 @@ export function useIsOwner(): boolean | null {
 
   return isOwner;
 }
+
+/** How the owner is greeted. Nobody else ever sees it. */
+export const OWNER_NAME = "Hamdan Zahid";
+
+/**
+ * The name to greet the signed-in person by: the owner's name on the owner's
+ * account, else a name from the auth profile if one exists (sign-up doesn't
+ * ask for one today, but OAuth providers fill it), else `null` — greet without
+ * a name rather than guess one from an email address.
+ *
+ * `undefined` while the session is still being read (local, no network).
+ */
+let cachedName: string | null | undefined = isSupabaseConfigured ? undefined : OWNER_NAME;
+
+export function useDisplayName(): string | null | undefined {
+  const [name, setName] = useState<string | null | undefined>(cachedName);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    const resolve = (user: { email?: string; user_metadata?: Record<string, unknown> } | null | undefined) => {
+      const meta = user?.user_metadata ?? {};
+      const fromProfile = [meta.full_name, meta.name].find(
+        (v): v is string => typeof v === "string" && v.trim().length > 0,
+      );
+      cachedName = isOwnerEmail(user?.email) ? OWNER_NAME : (fromProfile?.trim() ?? null);
+      if (!cancelled) setName(cachedName);
+    };
+    supabase.auth.getSession().then(({ data }) => resolve(data.session?.user));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) =>
+      resolve(session?.user),
+    );
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  return name;
+}
