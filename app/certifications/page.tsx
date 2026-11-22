@@ -499,7 +499,7 @@ function IssuerTile({
       onClick={onClick}
       aria-label={label}
       title={hasProof ? "Preview certificate" : "Attach proof"}
-      className="group/tile relative grid aspect-square min-h-20 shrink-0 self-stretch place-items-center overflow-hidden rounded-md ring-1 ring-edge-strong transition hover:ring-accent"
+      className="group/tile relative grid aspect-square min-h-20 shrink-0 self-stretch place-items-center max-sm:size-16 max-sm:min-h-0 max-sm:self-start overflow-hidden rounded-md ring-1 ring-edge-strong transition hover:ring-accent"
       style={url ? undefined : { backgroundColor: monogramColour(issuer) }}
     >
       {url ? (
