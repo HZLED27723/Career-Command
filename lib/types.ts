@@ -136,6 +136,8 @@ export interface ResumeVersion {
   file?: Blob;
   fileName?: string;
   fileType?: string;
+  /** See `CoverLetter.builtIn`. */
+  builtIn?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -164,6 +166,14 @@ export interface CoverLetter {
   greeting?: string;
   letterDate?: string;
   closing?: string;
+  /**
+   * True while the row holds only template text brought in by the one-time
+   * personal-template import (lib/personalTemplates.ts) and nothing the user
+   * has done since. The Vault shows no "Updated" date for it, just as it
+   * showed none for the built-in defaults the import replaces. Every
+   * repository write clears it.
+   */
+  builtIn?: boolean;
   createdAt: string;
   updatedAt: string;
 }

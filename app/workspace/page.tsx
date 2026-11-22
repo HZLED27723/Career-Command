@@ -26,14 +26,18 @@ import { releasePdf } from "@/lib/pdf";
 import { applicationRepo, resumeRepo, coverLetterRepo } from "@/lib/db";
 import { useIsOwner } from "@/lib/owner";
 import {
-  DEFAULT_COVER_BODY,
-  DEFAULT_COVER_FIELDS,
-  DEFAULT_CV,
-  DEFAULT_RETAIL,
+  EMPTY_COVER_FIELDS,
   splitSkills,
   type CoverLetterFields,
   type ResumeContent,
 } from "@/lib/resume";
+import {
+  PERSONAL_TEMPLATES_FILENAME,
+  hasResumeContent,
+  importPersonalTemplates,
+  missingTemplates,
+  parsePersonalTemplates,
+} from "@/lib/personalTemplates";
 
 /**
  * The document vault. This is deliberately NOT an editor — it's the shelf you
@@ -125,7 +129,7 @@ export default function VaultPage() {
 }
 
 function Vault() {
-  /** Gates the owner's real documents — see lib/owner.ts. */
+  /** Owner-only labels and the template-import prompt — see lib/owner.ts. */
   const isOwner = useIsOwner();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -135,8 +139,12 @@ function Vault() {
   const [retail, setRetail] = useState<ResumeContent | null>(null);
   const [cv, setCv] = useState<ResumeContent | null>(null);
   const [coverFields, setCoverFields] =
-    useState<CoverLetterFields>(DEFAULT_COVER_FIELDS);
-  const [coverBody, setCoverBody] = useState(DEFAULT_COVER_BODY);
+    useState<CoverLetterFields>(EMPTY_COVER_FIELDS);
+  const [coverBody, setCoverBody] = useState("");
+  /** Bumped to re-read storage after the personal-template import. */
+  const [reloadKey, setReloadKey] = useState(0);
+  /** Template slots the owner's account hasn't imported yet (§7.32). */
+  const [missing, setMissing] = useState<string[]>([]);
   const [updated, setUpdated] = useState<Record<Doc, string | null>>({
     visual: null,
     cover: null,
@@ -170,11 +178,10 @@ function Vault() {
     setUpdated((p) => ({ ...p, [id]: new Date().toISOString() }));
 
   /*
-   * Load stored documents. The DEFAULT_* fallbacks are the owner's real
-   * resume, CV and cover letter, so they are only used for the owner — for
-   * anyone else an empty slot stays empty until they import their own file.
-   * Waits for `isOwner` to resolve so another person's document can't flash
-   * on screen first.
+   * Load stored documents. There are no built-in fallbacks any more (§7.32):
+   * a slot shows only what this account has stored, so a new account's Vault
+   * is empty and the owner's templates come from the owner's own rows. Waits
+   * for `isOwner` so the owner's labels don't flicker in after the cards.
    */
   useEffect(() => {
     if (isOwner === null) return;
@@ -184,48 +191,33 @@ function Vault() {
         resumeRepo.getByEngine("cv"),
         coverLetterRepo.getLatest(),
       ]);
-      setRetail(r ? JSON.parse(r.content) : isOwner ? DEFAULT_RETAIL : null);
-      setCv(v ? JSON.parse(v.content) : isOwner ? DEFAULT_CV : null);
+      setRetail(hasResumeContent(r?.content) ? JSON.parse(r!.content) : null);
+      setCv(hasResumeContent(v?.content) ? JSON.parse(v!.content) : null);
       if (c) {
         setCoverFields({
-          yourName: c.yourName ?? DEFAULT_COVER_FIELDS.yourName,
+          yourName: c.yourName ?? "",
           company: c.company,
           position: c.position,
           hiringManager: c.hiringManager ?? "",
           keySkills: c.keySkills.join(", "),
           hook: c.hook ?? "",
           track: c.tone ?? "technical",
-          contactLine: c.contactLine ?? DEFAULT_COVER_FIELDS.contactLine,
-          locationLine: c.locationLine ?? DEFAULT_COVER_FIELDS.locationLine,
-          greeting: c.greeting ?? DEFAULT_COVER_FIELDS.greeting,
+          contactLine: c.contactLine ?? "",
+          locationLine: c.locationLine ?? "",
+          greeting: c.greeting ?? "",
           date: c.letterDate ?? "",
-          closing: c.closing ?? DEFAULT_COVER_FIELDS.closing,
+          closing: c.closing ?? "",
         });
         setCoverBody(c.body);
-      } else if (!isOwner) {
-        // DEFAULT_COVER_* is the owner's real letter, letterhead and contact
-        // details — start everyone else from an empty page instead.
-        setCoverFields({
-          yourName: "",
-          company: "",
-          position: "",
-          hiringManager: "",
-          keySkills: "",
-          hook: "",
-          track: "technical",
-          contactLine: "",
-          locationLine: "",
-          greeting: "",
-          date: "",
-          closing: "",
-        });
+      } else {
+        setCoverFields(EMPTY_COVER_FIELDS);
         setCoverBody("");
       }
-      setUpdated({
-        visual: r?.updatedAt ?? null,
-        cv: v?.updatedAt ?? null,
-        cover: c?.updatedAt ?? null,
-      });
+      // Rows holding only the imported templates show no date, as the
+      // built-in defaults they replace never did.
+      const dated = (row?: { updatedAt: string; builtIn?: boolean }) =>
+        row && !row.builtIn ? row.updatedAt : null;
+      setUpdated({ visual: dated(r), cv: dated(v), cover: dated(c) });
       setTitles({
         visual: storedTitle(r?.name),
         cv: storedTitle(v?.name),
@@ -247,15 +239,16 @@ function Vault() {
         cv: asStored(v?.file, v?.fileName, v?.fileType),
         cover: asStored(c?.file, c?.fileName, c?.fileType),
       });
+      setMissing(isOwner ? await missingTemplates() : []);
       setLoaded(true);
     })();
-  }, [isOwner]);
+  }, [isOwner, reloadKey]);
 
   /*
    * NOTE: there is deliberately no auto-save of `retail` / `cv` / cover state
    * here. Since §7.12 the vault doesn't edit document content, so those values
-   * only ever change once — in the load effect above, which falls back to the
-   * built-in DEFAULT_* templates when nothing is stored yet.
+   * only ever change once — in the load effect above. (It used to fall back
+   * to built-in default templates when nothing was stored; see §7.32.)
    *
    * A debounced auto-save on them therefore fired on *every page visit* and
    * wrote the default templates into storage as if the user had authored them.
@@ -477,6 +470,43 @@ function Vault() {
   const [importOpen, setImportOpen] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
+  /* ── One-time personal-template import (owner only, §7.32) ─────── */
+
+  const templatesInput = useRef<HTMLInputElement>(null);
+  const [templatesNote, setTemplatesNote] = useState<string | null>(null);
+
+  const importTemplates = async (file: File) => {
+    setImportError(null);
+    let json: unknown;
+    try {
+      json = JSON.parse(await file.text());
+    } catch {
+      setImportError(`That file isn't readable JSON. Choose ${PERSONAL_TEMPLATES_FILENAME}.`);
+      return;
+    }
+    const parsed = parsePersonalTemplates(json);
+    if (!parsed.ok) {
+      setImportError(parsed.reason);
+      return;
+    }
+    setSaveState("saving");
+    try {
+      const added = await importPersonalTemplates(parsed.data);
+      setTemplatesNote(
+        added.length
+          ? `Imported your ${added.join(", ")}. They sync like the rest of your data.`
+          : "Nothing to import — this account already has those templates.",
+      );
+      setSaveState("saved");
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSaveState("idle");
+      setImportError(
+        `Couldn't import the templates${e instanceof Error ? `: ${e.message}` : ""}. Nothing was changed.`,
+      );
+    }
+  };
+
   const chooseImport = (id: Doc) => {
     importTarget.current = id;
     setImportOpen(false);
@@ -600,6 +630,51 @@ function Vault() {
           </div>
         </div>
       </div>
+
+      {isOwner && loaded && missing.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-dim bg-panel p-3">
+          <input
+            ref={templatesInput}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void importTemplates(file);
+            }}
+          />
+          <p className="max-w-2xl text-xs text-ink-muted">
+            <span className="font-medium text-ink">
+              Your built-in templates have moved out of the app.{" "}
+            </span>
+            Import them once from{" "}
+            <span className="font-mono text-[11px] text-ink">
+              {PERSONAL_TEMPLATES_FILENAME}
+            </span>{" "}
+            and they&apos;ll be kept with your own data and sync to your other
+            devices. Nothing you already have is overwritten.
+          </p>
+          <button
+            onClick={() => templatesInput.current?.click()}
+            className="min-h-9 shrink-0 rounded-sm bg-accent px-3 text-xs font-semibold text-bg transition-colors hover:bg-accent-strong"
+          >
+            Import templates
+          </button>
+        </div>
+      )}
+
+      {templatesNote && (
+        <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-md border border-edge bg-panel p-3">
+          <p className="text-xs text-ink-muted">{templatesNote}</p>
+          <button
+            onClick={() => setTemplatesNote(null)}
+            className="shrink-0 text-[11px] text-ink-muted hover:text-ink"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {importError && (
         <div role="alert" className="mb-4 flex items-start justify-between gap-3 rounded-md border border-danger/40 bg-panel p-3">

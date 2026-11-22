@@ -16,7 +16,6 @@ import { metaRepo } from "@/lib/db";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { deleteAccount, deleteEverything, stopAutoSync } from "@/lib/sync";
-import { CONTACT_EMAIL } from "@/components/legal/LegalPage";
 
 type Pending = { fileName: string; json: unknown; preview: BackupPreview };
 
@@ -97,7 +96,7 @@ export function BackupControl() {
         return;
       }
       setMessage(
-        `Your data has been deleted. Your login couldn't be removed automatically — email ${CONTACT_EMAIL} and it will be.`,
+        `Your data has been deleted. Your login couldn't be removed automatically — use the contact address in the privacy policy (/privacy) and it will be.`,
       );
       setDeleteOpen(false);
       setBusy(false);

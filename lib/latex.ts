@@ -96,7 +96,7 @@ export function resumeToLatex(c: ResumeContent): string {
   return lines.filter((l): l is string => typeof l === "string").join("\n");
 }
 
-/** Mirrors the user's LaTeX cover letter layout (Hamdan_Cover_Letter_Stantec). */
+/** Mirrors the layout of the Vault's cover-letter template (CoverLetterPreview). */
 export function coverLetterToLatex(
   f: CoverLetterFields,
   body: string,

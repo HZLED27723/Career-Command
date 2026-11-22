@@ -5,7 +5,6 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { certificationRepo, courseRepo } from "@/lib/db";
 import type { Certification, CredentialType } from "@/lib/types";
-import { useIsOwner } from "@/lib/owner";
 import { daysUntil, parseLocalDate } from "@/lib/actions";
 import {
   formatIssued,
@@ -15,6 +14,7 @@ import {
   monogramColour,
   shrinkLogo,
 } from "@/lib/credentials";
+import { logoSrc, useLogosReady } from "@/lib/logoCache";
 import { formatDate } from "@/components/workspace/ShelfCard";
 import {
   QuickLook,
@@ -55,18 +55,11 @@ const TYPE_LABEL: Record<CredentialType, string> = {
 const typeOf = (c: Certification): CredentialType =>
   c.credentialType ?? (c.fromCourseId !== undefined ? "course" : "certificate");
 
-/**
- * The owner's four real credentials. Personal records, not sample data — so
- * the button that adds them is only offered to the owner (see lib/owner.ts).
- * "Add the 4 from your CV" is literally true for him and false for anyone
- * else, who would be importing a stranger's certificates.
+/*
+ * The owner's own credentials used to be hard-coded here behind an "Add the 4
+ * from your CV" button. They're personal records, so they moved into the
+ * owner's private template file with the Vault templates (§7.32).
  */
-const CV_SEED = [
-  { title: "Flight Test Engineering Virtual Internship", issuer: "Nova Systems", issuedDate: "2026", credentialType: "certificate" as const },
-  { title: "Big Industry Challenge Certificate", issuer: "Common Purpose", issuedDate: "2025", credentialType: "certificate" as const },
-  { title: "MATLAB Onramp Certificate", issuer: "MathWorks", issuedDate: "2025", credentialType: "certificate" as const },
-  { title: "Student Member", issuer: "Engineers Australia", issuedDate: "2024", credentialType: "membership" as const },
-];
 
 const ACCEPT = "application/pdf,image/*";
 
@@ -141,7 +134,6 @@ export default function CertificationsPage() {
 }
 
 function Certifications() {
-  const isOwner = useIsOwner();
   const certs = useLiveQuery(() => certificationRepo.list(), []);
   const courses = useLiveQuery(() => courseRepo.list(), []);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -177,6 +169,17 @@ function Certifications() {
   }, [certs, courses]);
   const logoFor = (issuer: string, own?: Blob) =>
     own ?? sharedLogos.get(issuerKey(issuer));
+
+  /**
+   * Hold the list until the data and every logo in it are ready, so cards
+   * appear with their logos drawn — no empty state, monogram or blank tile
+   * flashing first (§7.33). Instant on a revisit; capped at 600 ms.
+   */
+  const logosReady = useLogosReady(
+    certs && courses
+      ? sorted.map((c) => ({ issuer: c.issuer, blob: logoFor(c.issuer, c.issuerLogo) }))
+      : undefined,
+  );
 
   const onPickFile = (file: File | undefined) => {
     if (file) setDraft(draftFromFile(file));
@@ -234,6 +237,8 @@ function Certifications() {
     );
   }
 
+  if (!logosReady) return <div className="mx-auto max-w-5xl p-6" />;
+
   return (
     <div className="mx-auto max-w-5xl p-6">
       <input
@@ -271,12 +276,7 @@ function Certifications() {
       </div>
 
       {sorted.length === 0 ? (
-        <EmptyState
-          onUpload={() => inputRef.current?.click()}
-          onSeed={
-            isOwner ? () => certificationRepo.bulkAdd(CV_SEED) : undefined
-          }
-        />
+        <EmptyState onUpload={() => inputRef.current?.click()} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((cert) => (
@@ -492,7 +492,7 @@ function IssuerTile({
   buttonRef: (el: HTMLButtonElement | null) => void;
   onClick: () => void;
 }) {
-  const url = useObjectUrl(logo);
+  const url = logoSrc(issuer, logo);
   return (
     <button
       ref={buttonRef}
@@ -506,7 +506,7 @@ function IssuerTile({
         // Fills the tile edge to edge, like course icons (owner's call): no
         // paper margin; a non-square logo is trimmed at its edges.
         // eslint-disable-next-line @next/next/no-img-element -- a local Blob URL
-        <img src={url} alt="" className="absolute inset-0 size-full bg-paper object-cover" />
+        <img src={url} alt="" decoding="sync" className="absolute inset-0 size-full bg-paper object-cover" />
       ) : (
         <span className="font-mono text-base font-semibold tracking-wide text-mist">
           {monogram(issuer)}
@@ -727,14 +727,7 @@ function EditModal({
 
 /* ── Empty state ────────────────────────────────────────────────────── */
 
-function EmptyState({
-  onUpload,
-  onSeed,
-}: {
-  onUpload: () => void;
-  /** Omitted for anyone but the owner — the seed is his own credentials. */
-  onSeed?: () => void;
-}) {
+function EmptyState({ onUpload }: { onUpload: () => void }) {
   return (
     <div className="grid min-h-72 place-items-center rounded-lg border border-dashed border-edge-strong bg-surface p-6">
       <div className="text-center">
@@ -753,14 +746,6 @@ function EmptyState({
           >
             ↑ Upload first certificate
           </button>
-          {onSeed && (
-            <button
-              onClick={onSeed}
-              className="min-h-9 rounded-sm border border-edge-strong px-3 text-xs text-ink-muted transition-colors hover:border-accent hover:text-ink"
-            >
-              Add the 4 from your CV
-            </button>
-          )}
         </div>
       </div>
     </div>

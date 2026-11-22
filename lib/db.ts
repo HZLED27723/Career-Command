@@ -225,6 +225,7 @@ export const resumeRepo = {
     if (existing) {
       await db.resumeVersions.update(existing.id, {
         ...patch,
+        builtIn: undefined, // acted on — see CoverLetter.builtIn
         updatedAt: now(),
       });
       return;
@@ -255,6 +256,7 @@ export const resumeRepo = {
       await db.resumeVersions.update(existing.id, {
         content,
         ...(name ? { name } : {}),
+        builtIn: undefined,
         updatedAt: now(),
       });
       return existing.id;
@@ -279,6 +281,7 @@ export const coverLetterRepo = {
     if (existing) {
       await db.coverLetters.update(existing.id, {
         ...data,
+        builtIn: undefined, // acted on — see CoverLetter.builtIn
         updatedAt: now(),
       });
       return existing.id;

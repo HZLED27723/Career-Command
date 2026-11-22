@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { warmVaultCovers } from "@/lib/vaultWarmup";
+import { warmIssuerLogos } from "@/lib/logoCache";
 import { Badge } from "@/components/ui/Badge";
 import { LogoTile, Wordmark } from "@/components/brand/Logo";
 import { BackupControl } from "@/components/layout/BackupControl";
@@ -40,7 +41,10 @@ export function Sidebar() {
 
   // The sidebar mounts once the app is ready (signed in and synced), which is
   // the right moment to get the Vault's covers ready in the background.
-  useEffect(() => warmVaultCovers(), []);
+  useEffect(() => {
+    warmVaultCovers();
+    warmIssuerLogos();
+  }, []);
 
   /* ── Keyboard: ↑/↓ (and Home/End) move between tabs ────────────────────
      Only while focus is in the nav (clicking a tab puts it there), so arrow

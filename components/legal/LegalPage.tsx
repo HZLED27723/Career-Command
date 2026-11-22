@@ -11,7 +11,11 @@ import { ThemeToggle } from "@/components/layout/ThemeToggle";
 /** Shown at the top of both pages. Change it whenever either page changes. */
 export const LEGAL_UPDATED = "22 November 2026";
 
-/** Where privacy questions and requests go. */
+/**
+ * Where privacy questions and requests go. Shown on the server-rendered legal
+ * pages only — don't import it into a "use client" component, or the address
+ * ships in the public JavaScript bundle (§7.32). Link to /privacy instead.
+ */
 export const CONTACT_EMAIL = "hamdan3809@gmail.com";
 
 export function LegalPage({
