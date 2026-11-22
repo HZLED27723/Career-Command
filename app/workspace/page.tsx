@@ -576,6 +576,17 @@ function Vault() {
           if (!problem) void storeFile(importTarget.current, file);
         }}
       />
+      <input
+        ref={templatesInput}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) void importTemplates(file);
+        }}
+      />
 
       {/* ── Shelf header ────────────────────────────────────────────── */}
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -625,44 +636,33 @@ function Vault() {
                     </span>
                   </button>
                 ))}
+                {/* The owner's one-time template import (§7.32) lives in this
+                    menu rather than a banner (owner's call, 2026-11-23). */}
+                {isOwner && loaded && missing.length > 0 && (
+                  <>
+                    <div className="my-1 border-t border-edge" />
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setImportOpen(false);
+                        templatesInput.current?.click();
+                      }}
+                      className="block min-h-11 w-full rounded-sm px-2.5 py-1.5 text-left transition-colors hover:bg-panel"
+                    >
+                      <span className="block text-xs font-medium text-ink">
+                        Your templates
+                      </span>
+                      <span className="block truncate font-mono text-[10px] text-ink-faint">
+                        {PERSONAL_TEMPLATES_FILENAME}
+                      </span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
-
-      {isOwner && loaded && missing.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-dim bg-panel p-3">
-          <input
-            ref={templatesInput}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (file) void importTemplates(file);
-            }}
-          />
-          <p className="max-w-2xl text-xs text-ink-muted">
-            <span className="font-medium text-ink">
-              Your built-in templates have moved out of the app.{" "}
-            </span>
-            Import them once from{" "}
-            <span className="font-mono text-[11px] text-ink">
-              {PERSONAL_TEMPLATES_FILENAME}
-            </span>{" "}
-            and they&apos;ll be kept with your own data and sync to your other
-            devices. Nothing you already have is overwritten.
-          </p>
-          <button
-            onClick={() => templatesInput.current?.click()}
-            className="min-h-9 shrink-0 rounded-sm bg-accent px-3 text-xs font-semibold text-bg transition-colors hover:bg-accent-strong"
-          >
-            Import templates
-          </button>
-        </div>
-      )}
 
       {templatesNote && (
         <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-md border border-edge bg-panel p-3">
