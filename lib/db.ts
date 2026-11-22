@@ -150,6 +150,15 @@ export const applicationRepo = {
   },
 
   /**
+   * File every application that has no season under `season` (§7.34), in
+   * one transaction. Leaves `updatedAt` alone: filing isn't an edit, and the
+   * archive should keep its "last updated" order.
+   */
+  fileUnstamped(season: number): Promise<number> {
+    return db.applications.filter((a) => a.season == null).modify({ season });
+  },
+
+  /**
    * Change status and record the transition. History is append-only — it's the
    * record of what actually happened, so it is never rewritten, and a no-op
    * change adds nothing.

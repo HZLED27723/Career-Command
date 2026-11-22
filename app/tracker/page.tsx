@@ -6,6 +6,7 @@ import { applicationRepo } from "@/lib/db";
 import { ApplicationDetail } from "@/components/tracker/ApplicationDetail";
 import { collectActions, parseLocalDate } from "@/lib/actions";
 import { CalendarExportButton } from "@/components/calendar/AddToCalendar";
+import { seasonInfo, seasonOf, startSeason } from "@/lib/seasons";
 import type {
   Application,
   ApplicationStatus,
@@ -112,7 +113,34 @@ const SAMPLE_ROWS: Parameters<typeof applicationRepo.add>[0][] = [
 ];
 
 export default function TrackerPage() {
-  const apps = useLiveQuery(() => applicationRepo.list(), []);
+  const allApps = useLiveQuery(() => applicationRepo.list(), []);
+
+  /* ── Yearly trackers (§7.34): one season on screen, older ones archived ── */
+  const [seasonTick, setSeasonTick] = useState(0);
+  const seasons = useMemo(
+    () => seasonInfo(allApps ?? []),
+    // seasonTick: starting a season changes what seasonInfo reads from the device.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allApps, seasonTick],
+  );
+  const [pickedSeason, setPickedSeason] = useState<number | null>(null);
+  const season =
+    pickedSeason !== null && seasons.years.includes(pickedSeason)
+      ? pickedSeason
+      : seasons.current;
+  const isArchive = season !== seasons.current;
+  const apps = useMemo(
+    () => allApps?.filter((a) => seasonOf(a, seasons.unstamped) === season),
+    [allApps, seasons, season],
+  );
+  const [confirmingStart, setConfirmingStart] = useState(false);
+  const nextSeason = seasons.current + 1;
+  const beginNextSeason = async () => {
+    await startSeason(nextSeason, allApps ?? []);
+    setConfirmingStart(false);
+    setPickedSeason(nextSeason);
+    setSeasonTick((n) => n + 1);
+  };
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const toggleExpand = (id: number) =>
     setExpanded((prev) => {
@@ -159,8 +187,11 @@ export default function TrackerPage() {
   }, [apps, trackFilter, statusFilter, search, sort]);
 
   const total = apps?.length ?? 0;
-  /** Every application's upcoming dates, for the toolbar's calendar file. */
-  const calendarActions = useMemo(() => collectActions(apps ?? [], []), [apps]);
+  /** This year's upcoming dates for the toolbar's calendar file; archives have none. */
+  const calendarActions = useMemo(
+    () => (isArchive ? [] : collectActions(apps ?? [], [])),
+    [apps, isArchive],
+  );
 
   const toggleSort = (key: SortKey) =>
     setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : 1 }));
@@ -171,6 +202,7 @@ export default function TrackerPage() {
       role: "",
       track: trackFilter === "all" ? "engineering" : trackFilter,
       status: statusFilter ?? "draft",
+      season,
     });
     // On a phone a new card starts open, ready to fill in; on desktop the
     // empty row is already editable in place.
@@ -182,6 +214,28 @@ export default function TrackerPage() {
     // Desktop: fills the screen and the grid scrolls inside it. Phones: the
     // page scrolls normally and the grid becomes a list of cards.
     <div className="mx-auto flex max-w-6xl flex-col gap-4 p-5 md:h-full">
+      {/* ── Season switcher ─────────────────────────────────────────── */}
+      <SeasonBar
+        years={seasons.years}
+        counts={seasons.counts}
+        current={seasons.current}
+        season={season}
+        onPick={(y) => {
+          setPickedSeason(y);
+          setStatusFilter(null);
+          setExpanded(new Set());
+          setConfirmingStart(false);
+        }}
+        nextSeason={nextSeason}
+        canStartNext={
+          !isArchive && nextSeason <= new Date().getFullYear() + 1 && total > 0
+        }
+        confirming={confirmingStart}
+        onAskStart={() => setConfirmingStart(true)}
+        onCancelStart={() => setConfirmingStart(false)}
+        onConfirmStart={() => void beginNextSeason()}
+      />
+
       {/* ── Dashboard strip ─────────────────────────────────────────── */}
       <div className="grid shrink-0 grid-cols-6 gap-2 max-lg:grid-cols-3">
         <StatCard
@@ -274,7 +328,11 @@ export default function TrackerPage() {
       <div className="flex flex-col gap-2 md:hidden">
         {total === 0 ? (
           <div className="rounded-md border border-edge bg-surface">
-            <EmptyState />
+            <EmptyState
+              season={season}
+              archived={archivedSummary(seasons, season)}
+              offerSamples={(allApps?.length ?? 0) === 0}
+            />
           </div>
         ) : rows.length === 0 ? (
           <p className="rounded-md border border-dashed border-edge px-4 py-8 text-center text-xs text-ink-faint">
@@ -295,7 +353,11 @@ export default function TrackerPage() {
       {/* ── The grid ────────────────────────────────────────────────── */}
       <div className="min-h-0 flex-1 overflow-auto rounded-md border border-edge bg-surface max-md:hidden">
         {total === 0 ? (
-          <EmptyState />
+          <EmptyState
+              season={season}
+              archived={archivedSummary(seasons, season)}
+              offerSamples={(allApps?.length ?? 0) === 0}
+            />
         ) : (
           <table className="w-full min-w-[880px] border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-panel">
@@ -359,7 +421,8 @@ export default function TrackerPage() {
 
       {/* ── Status bar ──────────────────────────────────────────────── */}
       <p className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-        {rows.length} of {total} applications
+        {rows.length} of {total} applications · {season}
+        {isArchive && " archive"}
         {statusFilter && ` · ${statusMeta(statusFilter).label}`}
         {trackFilter !== "all" &&
           ` · ${TRACKS.find((t) => t.value === trackFilter)?.label}`}
@@ -753,16 +816,36 @@ function TextCell({
   );
 }
 
-function EmptyState() {
+/** "46 applications from 2026 are in the archive", for an empty new season. */
+function archivedSummary(
+  seasons: { years: number[]; counts: Map<number, number> },
+  season: number,
+): { year: number; count: number } | null {
+  const previous = seasons.years.find((y) => y < season);
+  return previous
+    ? { year: previous, count: seasons.counts.get(previous) ?? 0 }
+    : null;
+}
+
+function EmptyState({
+  season,
+  archived,
+  offerSamples,
+}: {
+  season: number;
+  archived: { year: number; count: number } | null;
+  offerSamples: boolean;
+}) {
   return (
-    <div className="grid h-full min-h-64 place-items-center">
+    <div className="grid h-full min-h-64 place-items-center px-4 py-8">
       <div className="text-center">
         <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-          No applications yet
+          {archived ? `${season} starts here` : "No applications yet"}
         </p>
-        <p className="mt-2 max-w-xs text-sm text-ink-muted">
-          Every row is editable in place — company, role, status, dates and
-          notes, spreadsheet-style.
+        <p className="mx-auto mt-2 max-w-xs text-sm text-ink-muted">
+          {archived
+            ? `Your ${archived.count} application${archived.count === 1 ? "" : "s"} from ${archived.year} ${archived.count === 1 ? "is" : "are"} in the archive. Switch to ${archived.year} above whenever you need them.`
+            : "Every row is editable in place — company, role, status, dates and notes, spreadsheet-style."}
         </p>
         <div className="mt-4 flex justify-center gap-2">
           <button
@@ -772,20 +855,147 @@ function EmptyState() {
                 role: "",
                 track: "engineering",
                 status: "draft",
+                season,
               })
             }
             className="rounded-sm bg-accent-dim px-3 py-1.5 text-xs font-semibold text-accent-strong transition-colors hover:bg-accent hover:text-bg"
           >
             + Add first application
           </button>
+          {offerSamples && (
           <button
-            onClick={() => SAMPLE_ROWS.forEach((r) => applicationRepo.add(r))}
+            onClick={() =>
+              SAMPLE_ROWS.forEach((r) => applicationRepo.add({ ...r, season }))
+            }
             className="rounded-sm border border-edge-strong px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-accent hover:text-ink"
           >
             Load sample data
           </button>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Which year's tracker is on screen (§7.34). The current season is the one
+ * new applications go into; earlier years are archives, still complete and
+ * editable. Starting the next season files everything under its year first.
+ */
+function SeasonBar({
+  years,
+  counts,
+  current,
+  season,
+  onPick,
+  nextSeason,
+  canStartNext,
+  confirming,
+  onAskStart,
+  onCancelStart,
+  onConfirmStart,
+}: {
+  years: number[];
+  counts: Map<number, number>;
+  current: number;
+  season: number;
+  onPick: (year: number) => void;
+  nextSeason: number;
+  canStartNext: boolean;
+  confirming: boolean;
+  onAskStart: () => void;
+  onCancelStart: () => void;
+  onConfirmStart: () => void;
+}) {
+  const currentCount = counts.get(current) ?? 0;
+  return (
+    <div className="flex shrink-0 flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {years.length > 1 ? (
+          <div
+            role="tablist"
+            aria-label="Tracker year"
+            className="flex max-w-full overflow-x-auto rounded-sm border border-edge bg-panel p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {years.map((y) => (
+              <button
+                key={y}
+                role="tab"
+                aria-selected={y === season}
+                onClick={() => onPick(y)}
+                className={`flex shrink-0 items-baseline gap-1.5 rounded-xs px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors max-md:min-h-9 ${
+                  y === season
+                    ? "bg-raised text-accent-strong"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                {y}
+                <span className="font-mono text-[10px] text-ink-faint">
+                  {y === current
+                    ? (counts.get(y) ?? 0)
+                    : `archive · ${counts.get(y) ?? 0}`}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
+            {current} tracker
+          </p>
+        )}
+        {canStartNext && !confirming && (
+          <button
+            onClick={onAskStart}
+            className="ml-auto rounded-sm border border-edge-strong px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:border-accent hover:text-ink max-md:min-h-11"
+          >
+            Start {nextSeason} tracker →
+          </button>
+        )}
+      </div>
+
+      {season !== current && (
+        <p className="rounded-sm border border-edge bg-panel px-3 py-2 text-[11px] leading-relaxed text-ink-muted">
+          <span className="font-semibold text-ink">{season} archive.</span>{" "}
+          Everything is kept and still editable, so you can log a late reply.
+          It doesn&apos;t count toward your dashboard or calendar.{" "}
+          <button
+            onClick={() => onPick(current)}
+            className="font-medium text-accent transition-colors hover:text-accent-strong"
+          >
+            Back to {current} →
+          </button>
+        </p>
+      )}
+
+      {confirming && (
+        <div className="rounded-md border border-accent-dim bg-surface p-3.5 text-xs leading-relaxed text-ink-muted">
+          <p className="text-sm font-semibold text-ink">
+            Start the {nextSeason} tracker?
+          </p>
+          <p className="mt-1">
+            Your {currentCount} application{currentCount === 1 ? "" : "s"}{" "}
+            move{currentCount === 1 ? "s" : ""} to the {current} archive.
+            Nothing is deleted, and you can open and edit them any time from the
+            year switcher. The tracker, dashboard and calendar start fresh for{" "}
+            {nextSeason}.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={onConfirmStart}
+              className="rounded-sm bg-accent-dim px-3 py-1.5 text-xs font-semibold text-accent-strong transition-colors hover:bg-accent hover:text-bg max-md:min-h-11"
+            >
+              Start {nextSeason}
+            </button>
+            <button
+              onClick={onCancelStart}
+              className="rounded-sm px-3 py-1.5 text-xs text-ink-muted transition-colors hover:text-ink max-md:min-h-11"
+            >
+              Not yet
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

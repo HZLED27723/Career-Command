@@ -17,6 +17,7 @@ import { GettingStarted } from "@/components/onboarding/GettingStarted";
 import { NextActions } from "@/components/dashboard/NextActions";
 import { VaultCovers } from "@/components/dashboard/VaultCovers";
 import { collectActions } from "@/lib/actions";
+import { currentSeasonApps, seasonInfo } from "@/lib/seasons";
 import { isDrafted } from "@/lib/interview";
 import { useDisplayName } from "@/lib/owner";
 import type { ApplicationStatus } from "@/lib/types";
@@ -31,7 +32,11 @@ const STATUS_ORDER: { status: ApplicationStatus; label: string; dot: string }[] 
   ];
 
 export default function DashboardPage() {
-  const apps = useLiveQuery(() => applicationRepo.list(), []);
+  const allApps = useLiveQuery(() => applicationRepo.list(), []);
+  /** The dashboard counts this year's tracker only; older years are archived (§7.34). */
+  const apps = useMemo(() => allApps && currentSeasonApps(allApps), [allApps]);
+  const season = useMemo(() => (allApps ? seasonInfo(allApps) : null), [allApps]);
+  const everApplied = (allApps?.length ?? 0) > 0;
   const questions = useLiveQuery(() => questionRepo.list(), []);
   const certs = useLiveQuery(() => certificationRepo.list(), []);
   const companies = useLiveQuery(() => companyRepo.list(), []);
@@ -127,10 +132,10 @@ export default function DashboardPage() {
 
         <GettingStarted
           hasDocument={(storedDocs ?? 0) > 0}
-          hasApplication={total > 0}
+          hasApplication={everApplied}
         />
 
-        <NextActions actions={actions} hasAnyRecords={total > 0} />
+        <NextActions actions={actions} hasAnyRecords={everApplied} />
 
         {/* ── Bento grid ──────────────────────────────────────────── */}
         <div className="grid grid-cols-6 gap-3 max-md:grid-cols-2">
@@ -173,6 +178,7 @@ export default function DashboardPage() {
             <div className="p-5">
               <p className="font-mono text-[10px] uppercase tracking-widest text-ink-faint">
                 Applications
+                {season && season.years.length > 1 && ` · ${season.current}`}
               </p>
               <p className="mt-2 font-mono text-4xl font-semibold tabular-nums text-ink">
                 {total}

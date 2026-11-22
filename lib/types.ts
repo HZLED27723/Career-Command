@@ -82,6 +82,11 @@ export interface Application {
 
   /** Status transitions, oldest first. */
   statusHistory?: StatusChange[];
+  /**
+   * The recruiting year this application belongs to (§7.34). Absent on rows
+   * from before yearly trackers; see lib/seasons.ts.
+   */
+  season?: number;
 
   createdAt: string;
   updatedAt: string;
