@@ -306,6 +306,12 @@ The framed gallery looked uneven because every certificate is a different shape,
 * Page width `max-w-6xl` (was `5xl`). Clock and the rest are unchanged.
 * **The Vault tile shows the real documents** (`components/dashboard/VaultCovers.tsx`): three fanned papers (Technical Résumé, Résumé, Cover Letter) showing page one of each stored PDF, via `pdfThumbnail(blob, 300, slot)` — same slot ids and width as ShelfCard / `warmVaultCovers`, so they're cache hits. A slot with no PDF (empty, built-in template, Word file) keeps the drawn placeholder paper.
 
+### 7.29 Light theme (2026-11-22 — owner-requested, dark stays the default)
+
+* `:root[data-theme="light"]` in `app/globals.css` redefines the colour tokens (surfaces, ink, accent, status, Vault cover backings) and sets `color-scheme: light`. Every utility reads those variables, so components need no theme branches — **keep new colours on tokens**, not hex, or they will not follow the theme. Brand constants (`mint`, `sage`, `pine`, `carbon`, `mist`) are deliberately not overridden: the Pine logo tile and the dark initials tiles stay as they are in both themes.
+* Mint is unreadable as text on white, so in light the accent is a Pine-family green (`#1c7d5b`, strong `#125e44`, dim `#dcf1e8`). Contrast figures are in the CSS comment; keep text tokens at 4.5 : 1 or better on both `--color-surface` and `--color-bg`.
+* `components/layout/ThemeToggle.tsx` (sidebar footer, under Data & backup) flips `data-theme` and saves `cc-theme` in **localStorage** — a per-device display preference, not synced or backed up. `THEME_BOOT` in `app/layout.tsx` applies it before first paint (no dark flash); `<html>` has `suppressHydrationWarning` for that attribute. The sign-in screen follows the saved choice but has no switch.
+
 ### 7.28 Launch-readiness fixes found in the phone screenshots (2026-11-22)
 
 * **Greeting**: the dashboard was hard-coded to "Welcome, Hamdan Zahid." for every account. `useDisplayName()` (`lib/owner.ts`) returns `OWNER_NAME` on the owner's account (and in local-only mode), else `user_metadata.full_name`/`name` if an auth provider set one, else `null` → "Welcome back." Never guess a name from an email. It's held invisible for the instant the local session is read so the owner's greeting doesn't flicker.

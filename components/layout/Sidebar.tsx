@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { LogoTile, Wordmark } from "@/components/brand/Logo";
 import { BackupControl } from "@/components/layout/BackupControl";
 import { AccountControl } from "@/components/auth/AccountControl";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", code: "00" },
@@ -200,6 +201,7 @@ export function Sidebar() {
       <div className="space-y-2 border-t border-edge p-3 max-md:p-2">
         <AccountControl />
         <BackupControl />
+        <ThemeToggle />
         <p className="px-1 font-mono text-[10px] uppercase tracking-widest text-ink-faint max-md:text-center">
           <span className="max-md:hidden">v0.1</span>
           <span className="md:hidden">v0.1</span>

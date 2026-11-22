@@ -152,6 +152,52 @@ html {
   color-scheme: dark;
 }
 
+/*
+ * Light theme (owner-requested 2026-11-22). Same tokens, light values; every
+ * utility reads these variables, so components need no changes. Set by
+ * `data-theme="light"` on <html> (ThemeToggle, and a pre-paint script in
+ * layout.tsx so a light page never flashes dark). Dark stays the default.
+ *
+ * Mint (#7fd9b9) is unreadable as text on white, so the accent darkens to a
+ * Pine-family green; the Pine logo tile stays dark (brand §02 — Mint has no
+ * contrast on paper without it). Contrast on white / on --color-bg:
+ *   ink 17.9 / 16.4 · ink-muted 7.4 / 6.8 · ink-faint 5.5 / 5.0
+ *   accent 5.1 / 4.7 · accent-strong 7.6 / 7.0
+ * Brand constants (mint, sage, pine, carbon, mist) are not overridden: the
+ * initials tiles and logo use them on purpose in both themes.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg: #f3f5f4;
+  --color-surface: #ffffff;
+  --color-panel: #f8faf9;
+  --color-raised: #edf1ef;
+  --color-edge: #dde4e1;
+  --color-edge-strong: #c7d1cd;
+
+  --color-ink: #0f1513;
+  --color-ink-muted: #4b5853;
+  --color-ink-faint: #5f6c67;
+
+  --color-accent: #1c7d5b;
+  --color-accent-strong: #125e44;
+  --color-accent-dim: #dcf1e8;
+
+  --color-ok: #237a4b;
+  --color-warn: #93600f;
+  --color-danger: #b03f3f;
+  --color-info: #33639f;
+
+  --color-cover-eng: #d9ebe3;
+  --color-cover-eng-ink: #1f6149;
+  --color-cover-retail: #efe6d4;
+  --color-cover-retail-ink: #7a5822;
+  --color-cover-letter: #dde6f1;
+  --color-cover-letter-ink: #36577d;
+  --color-cover-neutral: #e9eeec;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-ink);

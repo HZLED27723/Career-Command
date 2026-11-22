@@ -46,8 +46,16 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#0b0e0d",
-  colorScheme: "dark",
+  // Dark by default; the light theme sets `color-scheme: light` in CSS.
+  colorScheme: "dark light",
 };
+
+/**
+ * Applies a saved light-theme choice before first paint, so a light page
+ * never flashes dark. Must stay tiny and dependency-free; it runs before
+ * React. The key matches THEME_KEY in components/layout/ThemeToggle.tsx.
+ */
+const THEME_BOOT = `try{if(localStorage.getItem("cc-theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}`;
 
 export default function RootLayout({
   children,
@@ -58,7 +66,12 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${archivo.variable} h-full antialiased`}
+      // The boot script may set data-theme before React hydrates.
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+      </head>
       <body className="h-dvh overflow-hidden">
         <AuthGate>
           <div className="flex h-full">
