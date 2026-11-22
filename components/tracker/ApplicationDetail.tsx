@@ -11,6 +11,7 @@ import {
 } from "@/lib/db";
 import { downloadFile } from "@/lib/latex";
 import { isDrafted } from "@/lib/interview";
+import { ApplicationCalendar } from "@/components/calendar/AddToCalendar";
 import type {
   Application,
   ApplicationStatus,
@@ -126,6 +127,7 @@ export function ApplicationDetail({
             placeholder="e.g. email Priya about the site visit"
             onCommit={(v) => commit({ nextAction: v || undefined })}
           />
+          <ApplicationCalendar app={app} />
         </Section>
 
         {/* ── The listing ───────────────────────────────────────────── */}

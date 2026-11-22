@@ -92,3 +92,31 @@ $$;
 
 revoke all on function public.consume_research_quota() from public;
 grant execute on function public.consume_research_quota() to authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Self-service account deletion (§7.31)
+--
+-- "Delete everything" in Data & backup removes the user's records, then calls
+-- this to remove the login itself. Removing an auth user normally needs the
+-- service-role key, which must never reach a browser, so this runs as the
+-- definer and can only ever delete the CALLER (auth.uid()) — there is no
+-- argument to point it at anyone else. user_data and research_usage go with it
+-- through their ON DELETE CASCADE foreign keys.
+-- ─────────────────────────────────────────────────────────────────────────
+
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  delete from auth.users where id = auth.uid();
+end;
+$$;
+
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;

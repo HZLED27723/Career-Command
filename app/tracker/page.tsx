@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { applicationRepo } from "@/lib/db";
 import { ApplicationDetail } from "@/components/tracker/ApplicationDetail";
-import { parseLocalDate } from "@/lib/actions";
+import { collectActions, parseLocalDate } from "@/lib/actions";
+import { CalendarExportButton } from "@/components/calendar/AddToCalendar";
 import type {
   Application,
   ApplicationStatus,
@@ -158,6 +159,8 @@ export default function TrackerPage() {
   }, [apps, trackFilter, statusFilter, search, sort]);
 
   const total = apps?.length ?? 0;
+  /** Every application's upcoming dates, for the toolbar's calendar file. */
+  const calendarActions = useMemo(() => collectActions(apps ?? [], []), [apps]);
 
   const toggleSort = (key: SortKey) =>
     setSort((s) => ({ key, dir: s.key === key ? ((-s.dir) as 1 | -1) : 1 }));
@@ -252,12 +255,19 @@ export default function TrackerPage() {
           className="w-64 rounded-sm border border-edge bg-panel px-3 py-1.5 text-xs outline-none placeholder:text-ink-faint focus:border-accent-dim max-md:min-h-11 max-md:w-full"
         />
 
-        <button
-          onClick={addRow}
-          className="ml-auto rounded-sm bg-accent-dim px-3 py-1.5 text-xs font-semibold text-accent-strong transition-colors hover:bg-accent hover:text-bg max-md:min-h-11"
-        >
-          + New application
-        </button>
+        <div className="ml-auto flex gap-2 max-md:w-full">
+          <CalendarExportButton
+            actions={calendarActions}
+            label="Calendar"
+            className="py-1.5 max-md:min-h-11"
+          />
+          <button
+            onClick={addRow}
+            className="rounded-sm bg-accent-dim px-3 py-1.5 text-xs font-semibold text-accent-strong transition-colors hover:bg-accent hover:text-bg max-md:min-h-11 max-md:flex-1"
+          >
+            + New application
+          </button>
+        </div>
       </div>
 
       {/* ── Phones: one card per application ────────────────────────── */}

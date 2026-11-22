@@ -14,7 +14,9 @@ import {
 import { downloadJson } from "@/lib/latex";
 import { metaRepo } from "@/lib/db";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { deleteEverything, stopAutoSync } from "@/lib/sync";
+import Link from "next/link";
+import { deleteAccount, deleteEverything, stopAutoSync } from "@/lib/sync";
+import { CONTACT_EMAIL } from "@/components/legal/LegalPage";
 
 type Pending = { fileName: string; json: unknown; preview: BackupPreview };
 
@@ -83,8 +85,23 @@ export function BackupControl() {
       );
       await deleteEverything();
       stopAutoSync();
-      if (supabase) await supabase.auth.signOut();
-      else window.location.reload();
+      if (!supabase) {
+        window.location.reload();
+        return;
+      }
+      // Records are gone; now the login itself (§7.31).
+      if (await deleteAccount()) {
+        // The user no longer exists server-side, so only the local session
+        // needs clearing.
+        await supabase.auth.signOut({ scope: "local" });
+        return;
+      }
+      setMessage(
+        `Your data has been deleted. Your login couldn't be removed automatically — email ${CONTACT_EMAIL} and it will be.`,
+      );
+      setDeleteOpen(false);
+      setBusy(false);
+      setTimeout(() => void supabase!.auth.signOut(), 6000);
     } catch (e) {
       setError(
         e instanceof Error
@@ -300,7 +317,7 @@ export function BackupControl() {
               <p className="mt-0.5 text-[11px] leading-relaxed text-ink-faint">
                 Permanently removes every record
                 {isSupabaseConfigured
-                  ? " from this device and from your account"
+                  ? " from this device and from your account, then deletes your login"
                   : " from this browser"}
                 . A final export downloads first so you keep a copy. This
                 can&apos;t be undone.
@@ -352,9 +369,8 @@ export function BackupControl() {
                   </div>
                   {isSupabaseConfigured && (
                     <p className="mt-2 text-[10px] leading-relaxed text-ink-faint">
-                      Your sign-in itself stays until you ask for the account to
-                      be removed — deleting the login needs admin access the
-                      browser deliberately doesn&apos;t have.
+                      Your email address and login are removed too, so signing
+                      in again would start a brand-new, empty account.
                     </p>
                   )}
                 </div>
@@ -373,7 +389,16 @@ export function BackupControl() {
               </p>
             )}
 
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="text-[10px] text-ink-faint">
+                <Link href="/privacy" className="transition-colors hover:text-ink">
+                  Privacy policy
+                </Link>
+                {" · "}
+                <Link href="/terms" className="transition-colors hover:text-ink">
+                  Terms
+                </Link>
+              </p>
               <button
                 onClick={close}
                 className="rounded-sm px-3 py-1.5 text-xs text-ink-muted transition-colors hover:text-ink"

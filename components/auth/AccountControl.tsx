@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  flushPending,
   onSyncInfo,
   retrySync,
-  stopAutoSync,
+  signOutAndForget,
   type SyncInfo,
 } from "@/lib/sync";
 
@@ -25,6 +24,8 @@ export function AccountControl() {
     pending: false,
   });
   const [signingOut, setSigningOut] = useState(false);
+  /** Set when signing out would leave unsaved changes on this device. */
+  const [unsavedWarning, setUnsavedWarning] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -47,14 +48,17 @@ export function AccountControl() {
 
   if (!supabase || !email) return null;
 
-  /** Save anything outstanding before the session goes away. */
-  const signOut = async () => {
+  /**
+   * Save anything outstanding, then sign out and clear this device's copy
+   * (§7.31). If something couldn't be saved, ask before leaving it here.
+   */
+  const signOut = async (keepUnsaved = false) => {
     setSigningOut(true);
     try {
-      await flushPending();
+      const { signedOut } = await signOutAndForget({ keepUnsaved });
+      if (!signedOut) setUnsavedWarning(true);
     } finally {
-      stopAutoSync();
-      await supabase!.auth.signOut();
+      setSigningOut(false);
     }
   };
 
@@ -76,12 +80,12 @@ export function AccountControl() {
           {email}
         </span>
         <button
-          onClick={signOut}
+          onClick={() => void signOut()}
           disabled={signingOut}
           title={
             sync.pending
-              ? "Saves your pending changes, then signs out"
-              : "Sign out"
+              ? "Saves your pending changes, signs out and clears this device"
+              : "Signs out and clears your records from this device"
           }
           className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-ink-faint transition-colors hover:text-danger disabled:opacity-50 max-md:hidden"
         >
@@ -95,6 +99,30 @@ export function AccountControl() {
       >
         {label}
       </p>
+
+      {unsavedWarning && (
+        <div className="mt-1 max-md:hidden">
+          <p className="text-[10px] leading-snug text-warn">
+            Some changes haven&apos;t reached your account yet. Signing out now
+            keeps them on this device so they aren&apos;t lost.
+          </p>
+          <div className="mt-1 flex gap-2">
+            <button
+              onClick={() => void signOut(true)}
+              disabled={signingOut}
+              className="rounded-sm border border-edge-strong px-2 py-0.5 text-[10px] font-medium text-ink-muted transition-colors hover:border-danger hover:text-danger disabled:opacity-50"
+            >
+              Sign out anyway
+            </button>
+            <button
+              onClick={() => setUnsavedWarning(false)}
+              className="text-[10px] text-ink-faint transition-colors hover:text-ink"
+            >
+              Stay
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Status is conveyed in words, not only by the dot's colour. */}
       {needsAction && (

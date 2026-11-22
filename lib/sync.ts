@@ -334,10 +334,67 @@ export async function deleteEverything(): Promise<void> {
     suppressTracking = false;
   }
 
+  // Cached Vault covers are pictures of the deleted documents.
+  await db.meta.where("key").startsWith("pdfthumb:").delete();
+
   lastKnownCloudCount = 0;
   dirty = false;
   if (pushTimer) clearTimeout(pushTimer);
   emit({ state: "synced", pending: false, detail: undefined });
+}
+
+/**
+ * Sign out and, when it's safe, leave nothing of this account on the device
+ * (§7.31) — so a shared or library computer doesn't keep someone's résumé in
+ * its browser storage after they've gone.
+ *
+ * "Safe" means every change has reached the cloud: the device reconciled,
+ * nothing is queued, and the last push succeeded. If not (offline, a failed
+ * sync, the offline-after-error mode), the local copy is the only complete
+ * one, so it's kept and the result says so. Guard 2 still stops the next
+ * account from ever seeing or uploading it.
+ *
+ * Auto-sync is stopped BEFORE the tables are cleared, so the clear can't be
+ * mistaken for the user deleting everything and pushed (guard 3 would also
+ * refuse it, but this never gets that far).
+ */
+export async function signOutAndForget({
+  keepUnsaved = false,
+}: { keepUnsaved?: boolean } = {}): Promise<{ signedOut: boolean; cleared: boolean }> {
+  await flushPending();
+  const safe = reconciled && !dirty && info.state === "synced" && !info.pending;
+
+  // Unsaved work: let the caller ask before leaving it on this device.
+  if (!safe && !keepUnsaved) return { signedOut: false, cleared: false };
+
+  stopAutoSync();
+  if (safe) {
+    suppressTracking = true;
+    try {
+      await db.transaction("rw", CONTENT_TABLES as unknown as string[], async () => {
+        for (const t of CONTENT_TABLES) await db.table(t).clear();
+      });
+      await db.meta.where("key").startsWith("pdfthumb:").delete();
+    } finally {
+      suppressTracking = false;
+    }
+  }
+  if (supabase) await supabase.auth.signOut();
+  return { signedOut: true, cleared: safe };
+}
+
+/**
+ * Remove the signed-in login itself, via the `delete_my_account` database
+ * function (supabase/schema.sql). Returns false when that function isn't
+ * installed, so the caller can say the login still exists rather than claim
+ * it's gone.
+ */
+export async function deleteAccount(): Promise<boolean> {
+  if (!supabase) return false;
+  const { error } = await supabase.rpc("delete_my_account");
+  if (!error) return true;
+  console.warn("Account removal unavailable:", error.message);
+  return false;
 }
 
 export function stopAutoSync() {

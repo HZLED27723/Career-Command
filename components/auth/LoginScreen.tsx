@@ -257,6 +257,19 @@ export function LoginScreen() {
                       ? "Create account"
                       : "Email me a reset link"}
               </button>
+              {mode === "signup" && (
+                <p className="text-center text-[11px] leading-relaxed text-ink-faint">
+                  By creating an account you agree to the{" "}
+                  <a href="/terms" className="text-accent hover:text-accent-strong">
+                    terms
+                  </a>{" "}
+                  and{" "}
+                  <a href="/privacy" className="text-accent hover:text-accent-strong">
+                    privacy policy
+                  </a>
+                  .
+                </p>
+              )}
             </div>
 
             <p className="mt-5 border-t border-edge pt-4 text-center text-xs text-ink-muted">
@@ -291,6 +304,15 @@ export function LoginScreen() {
               They aren&apos;t shared or sold, and you can export or delete
               everything from Data and backup. Company research sends only the
               company name and website you enter to Anthropic&apos;s API.
+            </p>
+            <p className="mt-2 text-[11px] text-ink-faint">
+              <a href="/privacy" className="text-accent hover:text-accent-strong">
+                Privacy policy
+              </a>
+              {" · "}
+              <a href="/terms" className="text-accent hover:text-accent-strong">
+                Terms of use
+              </a>
             </p>
           </details>
         </section>

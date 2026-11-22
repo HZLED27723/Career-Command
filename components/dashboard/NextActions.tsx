@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { describeWhen, type ActionKind, type NextAction } from "@/lib/actions";
+import { CalendarExportButton } from "@/components/calendar/AddToCalendar";
 
 /**
  * The top of the dashboard: what needs doing, soonest first.
@@ -72,10 +73,13 @@ export function NextActions({
         >
           What needs doing
         </h3>
-        <p className="text-[11px] text-ink-faint">
-          next two weeks
-          {later > 0 && ` · ${later} further out`}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-[11px] text-ink-faint">
+            next two weeks
+            {later > 0 && ` · ${later} further out`}
+          </p>
+          <CalendarExportButton actions={actions} />
+        </div>
       </div>
 
       <ul className="space-y-1.5">

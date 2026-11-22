@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Archivo } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TopBar } from "@/components/layout/TopBar";
-import { PageBackdrop } from "@/components/layout/PageBackdrop";
-import { AuthGate } from "@/components/auth/AuthGate";
+import { AppShell } from "@/components/layout/AppShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -73,18 +70,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="h-dvh overflow-hidden">
-        <AuthGate>
-          <div className="flex h-full">
-            <Sidebar />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <TopBar />
-              <main className="relative min-h-0 flex-1 overflow-auto">
-                <PageBackdrop />
-                {children}
-              </main>
-            </div>
-          </div>
-        </AuthGate>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
