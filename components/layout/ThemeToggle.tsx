@@ -33,9 +33,29 @@ function setTheme(next: Theme) {
   listeners.forEach((l) => l());
 }
 
-export function ThemeToggle() {
+/**
+ * `sidebar`: a quiet row in the sidebar footer (icon only on the phone rail).
+ * `pill`: a small bordered button for screens without the sidebar — the
+ * sign-in page — with its label always shown.
+ */
+export function ThemeToggle({ variant = "sidebar" }: { variant?: "sidebar" | "pill" }) {
   const theme = useSyncExternalStore(subscribe, read, () => "dark" as Theme);
   const next: Theme = theme === "light" ? "dark" : "light";
+
+  if (variant === "pill") {
+    return (
+      <button
+        type="button"
+        onClick={() => setTheme(next)}
+        aria-label={`Switch to ${next} mode`}
+        title={`Switch to ${next} mode`}
+        className="flex min-h-9 items-center gap-2 rounded-full border border-edge-strong bg-surface/80 px-3.5 font-mono text-[10px] uppercase tracking-widest text-ink-muted backdrop-blur transition-colors hover:border-accent hover:text-ink"
+      >
+        {theme === "light" ? <MoonIcon /> : <SunIcon />}
+        {next === "light" ? "Light mode" : "Dark mode"}
+      </button>
+    );
+  }
 
   return (
     <button

@@ -166,8 +166,15 @@ html {
  * Brand constants (mint, sage, pine, carbon, mist) are not overridden: the
  * initials tiles and logo use them on purpose in both themes.
  */
+/* The sign-in page's corner wash: deep Pine on Carbon; on a light page that
+   reads as a dark stain, so light uses a faint accent tint instead. */
+:root {
+  --login-wash: color-mix(in srgb, var(--color-pine) 55%, transparent);
+}
+
 :root[data-theme="light"] {
   color-scheme: light;
+  --login-wash: color-mix(in srgb, var(--color-accent) 12%, transparent);
 
   --color-bg: #f3f5f4;
   --color-surface: #ffffff;

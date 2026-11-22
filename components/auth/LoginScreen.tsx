@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { BRAND, Lockup } from "@/components/brand/Logo";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 type Mode = "signin" | "signup" | "forgot";
 
@@ -102,11 +103,16 @@ export function LoginScreen() {
       />
       <div
         aria-hidden
-        className="pointer-events-none fixed -top-48 -left-40 size-[42rem] rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-pine)_55%,transparent),transparent)]"
+        className="pointer-events-none fixed -top-48 -left-40 size-[42rem] rounded-full bg-[radial-gradient(closest-side,var(--login-wash),transparent)]"
       />
+      {/* No sidebar here, so the theme switch sits top-right. Absolute, not
+          fixed: on a phone it scrolls away instead of floating over the card. */}
+      <div className="absolute top-[max(1rem,env(safe-area-inset-top))] right-[max(1rem,env(safe-area-inset-right))] z-10">
+        <ThemeToggle variant="pill" />
+      </div>
       {/* Columns share a top edge (logo level with the card) and the pair is
           centred on the screen as one block. */}
-      <main className="relative mx-auto grid min-h-dvh max-w-5xl content-center items-start gap-12 px-6 py-12 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-16">
+      <main className="relative mx-auto grid min-h-dvh max-w-5xl content-center items-start gap-12 px-6 py-12 max-sm:pt-20 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-16">
         {/* ── The pitch ─────────────────────────────────────────────── */}
         <section className="animate-fade-up">
           <Lockup tileClassName="size-11" wordClassName="text-xl" />
